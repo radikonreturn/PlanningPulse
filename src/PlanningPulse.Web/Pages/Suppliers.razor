@@ -1,0 +1,33 @@
+@page "/suppliers"
+@layout MainLayout
+@inject AppState AppState
+@implements IDisposable
+
+<div class="card fade-up">
+    <div class="card-header">
+        <div class="card-title">Suppliers</div>
+        <span class="badge badge-info">12 active</span>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Supplier #</th><th>Name</th><th>Email</th><th>Lead Time</th><th>On-Time Rate</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>SUP-001</td><td>Acme Parts Co.</td><td>orders@acme.com</td><td>7 days</td><td>94%</td><td><span class="badge badge-success">Active</span></td></tr>
+                <tr><td>SUP-002</td><td>Global Fasteners</td><td>sales@gf.com</td><td>14 days</td><td>78%</td><td><span class="badge badge-warn">At Risk</span></td></tr>
+                <tr><td>SUP-003</td><td>Motor Dynamics</td><td>info@motordyn.com</td><td>21 days</td><td>88%</td><td><span class="badge badge-success">Active</span></td></tr>
+                <tr><td>SUP-004</td><td>Steel Works Ltd</td><td>—</td><td>10 days</td><td>61%</td><td><span class="badge badge-danger">Inactive</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        AppState.PageTitle = "Suppliers";
+        AppState.OnChange += StateHasChanged;
+    }
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}

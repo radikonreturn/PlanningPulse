@@ -1,0 +1,63 @@
+# Build outputs
+bin/
+obj/
+out/
+publish/
+artifacts/
+
+# .NET user/local files
+*.user
+*.suo
+*.rsuser
+*.userosscache
+*.sln.docstates
+*.nupkg
+*.snupkg
+TestResults/
+coverage/
+coverage.*
+*.trx
+
+# IDE/editor
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local databases and EF/runtime files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+MigrationsBackup/
+
+# Local configuration and secrets
+appsettings.Development.local.json
+appsettings.Local.json
+*.secrets.json
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Frontend dependencies/builds if a React or asset pipeline is added later
+node_modules/
+dist/
+build/
+.vite/
+.next/
+
+# Docker/local compose overrides
+docker-compose.override.yml
+compose.override.yml

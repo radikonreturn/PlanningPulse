@@ -1,0 +1,33 @@
+@page "/inventory"
+@layout MainLayout
+@inject AppState AppState
+@implements IDisposable
+
+<div class="card fade-up">
+    <div class="card-header">
+        <div class="card-title">Inventory Levels</div>
+        <span class="badge badge-info">1,284 items</span>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Item</th><th>Location</th><th>On Hand</th><th>Allocated</th><th>On Order</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>WIDGET-A001</td><td>WH-01</td><td>420</td><td>200</td><td>500</td><td><span class="badge badge-success">OK</span></td></tr>
+                <tr><td>FRAME-B200</td><td>WH-01</td><td>35</td><td>50</td><td>120</td><td><span class="badge badge-warn">Low</span></td></tr>
+                <tr><td>BOLT-C050</td><td>WH-02</td><td>180</td><td>0</td><td>2000</td><td><span class="badge badge-danger">Critical</span></td></tr>
+                <tr><td>MOTOR-D010</td><td>WH-01</td><td>12</td><td>15</td><td>30</td><td><span class="badge badge-warn">Low</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        AppState.PageTitle = "Inventory";
+        AppState.OnChange += StateHasChanged;
+    }
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}

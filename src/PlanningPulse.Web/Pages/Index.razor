@@ -1,0 +1,148 @@
+﻿@page "/"
+@layout MainLayout
+@inject AppState AppState
+@implements IDisposable
+
+@if (!AppState.IsAuthenticated)
+{
+    <Login />
+}
+else
+{
+    <div class="kpi-grid fade-up">
+        <div class="kpi-card indigo">
+            <div class="kpi-icon">📦</div>
+            <div class="kpi-value">1,284</div>
+            <div class="kpi-label">Active Items</div>
+            <div class="kpi-delta up">↑ 12 this week</div>
+        </div>
+        <div class="kpi-card cyan">
+            <div class="kpi-icon">🗓️</div>
+            <div class="kpi-value">47</div>
+            <div class="kpi-label">Open Production Orders</div>
+            <div class="kpi-delta up">↑ 3 new today</div>
+        </div>
+        <div class="kpi-card green">
+            <div class="kpi-icon">✅</div>
+            <div class="kpi-value">98.2%</div>
+            <div class="kpi-label">Schedule Adherence</div>
+            <div class="kpi-delta up">↑ 0.4% vs last week</div>
+        </div>
+        <div class="kpi-card amber">
+            <div class="kpi-icon">⚠️</div>
+            <div class="kpi-value">3</div>
+            <div class="kpi-label">MRP Alerts</div>
+            <div class="kpi-delta down">↑ 2 since yesterday</div>
+        </div>
+    </div>
+
+    <div class="grid-2 fade-up-2">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">MRP Recommendations</div>
+                <span class="badge badge-info">3 pending</span>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Item</th><th>Type</th><th>Qty</th><th>Due</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>WIDGET-A001</td><td>Purchase</td><td>500</td><td>Jul 22</td><td><span class="badge badge-warn">Pending</span></td></tr>
+                        <tr><td>FRAME-B200</td><td>Manufacture</td><td>120</td><td>Jul 20</td><td><span class="badge badge-danger">Urgent</span></td></tr>
+                        <tr><td>BOLT-C050</td><td>Purchase</td><td>2,000</td><td>Jul 25</td><td><span class="badge badge-warn">Pending</span></td></tr>
+                        <tr><td>MOTOR-D010</td><td>Purchase</td><td>30</td><td>Jul 28</td><td><span class="badge badge-success">Released</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Inventory Status</div>
+            </div>
+            <div class="donut-wrap" style="margin-bottom:20px">
+                <div class="donut"></div>
+                <div class="donut-legend">
+                    <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>In Stock (42%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div>Allocated (26%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:var(--warn)"></div>On Order (17%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:var(--bg3)"></div>No Stock (15%)</div>
+                </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+                <div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                        <span style="color:var(--text2)">Warehousing Capacity</span><span>78%</span>
+                    </div>
+                    <div class="progress"><div class="progress-bar indigo" style="width:78%"></div></div>
+                </div>
+                <div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                        <span style="color:var(--text2)">BOM Coverage</span><span>91%</span>
+                    </div>
+                    <div class="progress"><div class="progress-bar green" style="width:91%"></div></div>
+                </div>
+                <div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                        <span style="color:var(--text2)">Supplier On-Time Rate</span><span>64%</span>
+                    </div>
+                    <div class="progress"><div class="progress-bar amber" style="width:64%"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid-2 fade-up-3">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Weekly Throughput</div>
+            </div>
+            <div class="spark">
+                <div class="spark-bar" style="height:55%"></div>
+                <div class="spark-bar" style="height:70%"></div>
+                <div class="spark-bar" style="height:45%"></div>
+                <div class="spark-bar" style="height:80%"></div>
+                <div class="spark-bar" style="height:65%"></div>
+                <div class="spark-bar highlight" style="height:90%"></div>
+                <div class="spark-bar" style="height:75%"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:6px">
+                <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Recent Activity</div>
+            </div>
+            <div class="activity-list">
+                <div class="activity-item">
+                    <div class="activity-dot indigo"></div>
+                    <div><div class="activity-text">MRP run completed for Tenant Alpha</div><div class="activity-time">2 min ago</div></div>
+                </div>
+                <div class="activity-item">
+                    <div class="activity-dot green"></div>
+                    <div><div class="activity-text">Production order PO-0047 scheduled</div><div class="activity-time">14 min ago</div></div>
+                </div>
+                <div class="activity-item">
+                    <div class="activity-dot amber"></div>
+                    <div><div class="activity-text">Low stock alert: BOLT-C050 below safety level</div><div class="activity-time">1 hr ago</div></div>
+                </div>
+                <div class="activity-item">
+                    <div class="activity-dot cyan"></div>
+                    <div><div class="activity-text">Supplier lead time updated to 7 days</div><div class="activity-time">3 hr ago</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        AppState.PageTitle = "Dashboard";
+        AppState.OnChange += StateHasChanged;
+    }
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}

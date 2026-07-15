@@ -14,6 +14,8 @@ namespace PlanningPulse.Infrastructure.Persistence;
 
 public sealed class PlanningPulseDbContext(DbContextOptions<PlanningPulseDbContext> options, ICurrentTenant currentTenant) : DbContext(options)
 {
+    private readonly ICurrentTenant _currentTenant = currentTenant;
+
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<ApplicationUser> Users => Set<ApplicationUser>();
     public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
@@ -73,14 +75,14 @@ public sealed class PlanningPulseDbContext(DbContextOptions<PlanningPulseDbConte
 
             if (entry.State == EntityState.Added && entry.Entity is ITenantOwned tenantOwned)
             {
-                if (!currentTenant.TenantId.HasValue && tenantOwned.TenantId == Guid.Empty)
+                if (!_currentTenant.TenantId.HasValue && tenantOwned.TenantId == Guid.Empty)
                 {
                     throw new InvalidOperationException("Tenant-owned data cannot be saved without a tenant context.");
                 }
 
                 if (tenantOwned.TenantId == Guid.Empty)
                 {
-                    tenantOwned.TenantId = currentTenant.TenantId!.Value;
+                    tenantOwned.TenantId = _currentTenant.TenantId!.Value;
                 }
             }
         }
@@ -90,6 +92,6 @@ public sealed class PlanningPulseDbContext(DbContextOptions<PlanningPulseDbConte
         where TEntity : class, ITenantOwned
     {
         modelBuilder.Entity<TEntity>().HasQueryFilter(entity =>
-            context.currentTenant.TenantId.HasValue && entity.TenantId == context.currentTenant.TenantId.Value);
+            context._currentTenant.TenantId.HasValue && entity.TenantId == context._currentTenant.TenantId.Value);
     }
 }

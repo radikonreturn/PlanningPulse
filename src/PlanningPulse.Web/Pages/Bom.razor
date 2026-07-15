@@ -1,0 +1,33 @@
+@page "/bom"
+@layout MainLayout
+@inject AppState AppState
+@implements IDisposable
+
+<div class="card fade-up">
+    <div class="card-header">
+        <div class="card-title">Bill of Materials</div>
+        <span class="badge badge-info">4 active BOMs</span>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Parent Item</th><th>Revision</th><th>Components</th><th>Effective From</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>WIDGET-A001</td><td>Rev A</td><td>5</td><td>Jan 1, 2026</td><td><span class="badge badge-success">Active</span></td></tr>
+                <tr><td>FRAME-B200</td><td>Rev B</td><td>8</td><td>Mar 1, 2026</td><td><span class="badge badge-success">Active</span></td></tr>
+                <tr><td>MOTOR-D010</td><td>Rev A</td><td>12</td><td>Jan 1, 2026</td><td><span class="badge badge-success">Active</span></td></tr>
+                <tr><td>ASSEMBLY-E001</td><td>Rev C</td><td>20</td><td>Jun 1, 2026</td><td><span class="badge badge-warn">Draft</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        AppState.PageTitle = "Bill of Materials";
+        AppState.OnChange += StateHasChanged;
+    }
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}

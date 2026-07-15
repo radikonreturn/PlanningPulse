@@ -60,6 +60,7 @@ public sealed class ItemConfiguration : IEntityTypeConfiguration<Item>
         builder.Property(x => x.Description).HasMaxLength(1000);
         builder.Property(x => x.UnitOfMeasure).HasMaxLength(20).IsRequired();
         builder.HasIndex(x => new { x.TenantId, x.ItemNumber }).IsUnique();
+        builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -71,6 +72,7 @@ public sealed class BomConfiguration : IEntityTypeConfiguration<Bom>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Revision).HasMaxLength(40).IsRequired();
         builder.HasIndex(x => new { x.TenantId, x.ParentItemId, x.Revision }).IsUnique();
+        builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.ParentItem).WithMany().HasForeignKey(x => x.ParentItemId).OnDelete(DeleteBehavior.Restrict);
     }
 }
@@ -81,6 +83,7 @@ public sealed class BomLineConfiguration : IEntityTypeConfiguration<BomLine>
     {
         builder.ToTable("BomLines");
         builder.HasKey(x => x.Id);
+        builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Bom).WithMany(x => x.Lines).HasForeignKey(x => x.BomId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.ComponentItem).WithMany().HasForeignKey(x => x.ComponentItemId).OnDelete(DeleteBehavior.Restrict);
     }
@@ -95,6 +98,7 @@ public sealed class WorkCenterConfiguration : IEntityTypeConfiguration<WorkCente
         builder.Property(x => x.Code).HasMaxLength(80).IsRequired();
         builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
         builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -106,6 +110,7 @@ public sealed class RoutingConfiguration : IEntityTypeConfiguration<Routing>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Revision).HasMaxLength(40).IsRequired();
         builder.HasIndex(x => new { x.TenantId, x.ItemId, x.Revision }).IsUnique();
+        builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
     }
 }
@@ -118,6 +123,7 @@ public sealed class OperationConfiguration : IEntityTypeConfiguration<Operation>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
         builder.HasIndex(x => new { x.TenantId, x.RoutingId, x.Sequence }).IsUnique();
+        builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Routing).WithMany(x => x.Operations).HasForeignKey(x => x.RoutingId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.WorkCenter).WithMany().HasForeignKey(x => x.WorkCenterId).OnDelete(DeleteBehavior.Restrict);
     }
@@ -131,6 +137,7 @@ public sealed class ProductionOrderConfiguration : IEntityTypeConfiguration<Prod
         builder.HasKey(x => x.Id);
         builder.Property(x => x.OrderNumber).HasMaxLength(80).IsRequired();
         builder.HasIndex(x => new { x.TenantId, x.OrderNumber }).IsUnique();
+        builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Routing).WithMany().HasForeignKey(x => x.RoutingId).OnDelete(DeleteBehavior.SetNull);
     }
@@ -144,6 +151,7 @@ public sealed class InventoryLevelConfiguration : IEntityTypeConfiguration<Inven
         builder.HasKey(x => x.Id);
         builder.Property(x => x.LocationCode).HasMaxLength(80).IsRequired();
         builder.HasIndex(x => new { x.TenantId, x.ItemId, x.LocationCode }).IsUnique();
+        builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
     }
 }
@@ -158,6 +166,7 @@ public sealed class SupplierConfiguration : IEntityTypeConfiguration<Supplier>
         builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
         builder.Property(x => x.Email).HasMaxLength(320);
         builder.HasIndex(x => new { x.TenantId, x.SupplierNumber }).IsUnique();
+        builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -168,6 +177,7 @@ public sealed class LeadTimeConfiguration : IEntityTypeConfiguration<LeadTime>
         builder.ToTable("LeadTimes");
         builder.HasKey(x => x.Id);
         builder.HasIndex(x => new { x.TenantId, x.ItemId, x.SupplierId }).IsUnique();
+        builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.SetNull);
     }

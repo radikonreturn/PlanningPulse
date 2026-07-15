@@ -1,0 +1,73 @@
+@inject AppState AppState
+@inject HttpClient Http
+
+<div class="login-shell">
+    <div class="login-card">
+        <div class="login-logo">
+            <div class="logo-icon-lg">⚡</div>
+            <h1>Planning<span>Pulse</span></h1>
+            <p>Sign in to your workspace</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMsg))
+        {
+            <div class="form-error" style="margin-bottom:12px;padding:10px;background:rgba(239,68,68,.1);border-radius:8px">
+                ⚠️ @errorMsg
+            </div>
+        }
+
+        <div class="form-group">
+            <label class="form-label">Email</label>
+            <input class="form-input" type="email" @bind="email" placeholder="you@company.com" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Workspace ID</label>
+            <input class="form-input" @bind="tenantSlug" placeholder="demo" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Password</label>
+            <input class="form-input" type="password" @bind="password" placeholder="••••••••" />
+        </div>
+
+        <button class="login-btn" @onclick="Submit" disabled="@loading">
+            @if (loading) { <span>Loading…</span> } else { <span>Sign In</span> }
+        </button>
+    </div>
+</div>
+
+@code {
+    bool loading;
+    string email = "", password = "", tenantSlug = "";
+    string? errorMsg;
+
+    async Task Submit()
+    {
+        loading = true;
+        errorMsg = null;
+        try
+        {
+            var res = await Http.PostAsJsonAsync("/api/auth/login", new
+            {
+                Email = email,
+                Password = password,
+                TenantSlug = tenantSlug
+            });
+            if (!res.IsSuccessStatusCode)
+            {
+                errorMsg = "Invalid email, password, or workspace ID.";
+                return;
+            }
+            var auth = await res.Content.ReadFromJsonAsync<AuthResult>();
+            AppState.Login(email.Split('@')[0], tenantSlug, auth!.AccessToken, auth.TenantId);
+        }
+        catch (Exception ex)
+        {
+            errorMsg = "Connection error: " + ex.Message;
+        }
+        finally { loading = false; }
+    }
+
+    record AuthResult(string AccessToken, DateTimeOffset ExpiresAtUtc, Guid TenantId, Guid UserId, int Role);
+}

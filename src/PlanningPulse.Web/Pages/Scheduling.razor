@@ -1,0 +1,33 @@
+@page "/scheduling"
+@layout MainLayout
+@inject AppState AppState
+@implements IDisposable
+
+<div class="card fade-up">
+    <div class="card-header">
+        <div class="card-title">Production Schedule</div>
+        <span class="badge badge-info">Week 29</span>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Order</th><th>Item</th><th>Qty</th><th>Start</th><th>End</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>PO-0047</td><td>WIDGET-A001</td><td>200</td><td>Jul 15</td><td>Jul 17</td><td><span class="badge badge-info">Scheduled</span></td></tr>
+                <tr><td>PO-0046</td><td>FRAME-B200</td><td>50</td><td>Jul 14</td><td>Jul 16</td><td><span class="badge badge-success">In Progress</span></td></tr>
+                <tr><td>PO-0045</td><td>MOTOR-D010</td><td>15</td><td>Jul 18</td><td>Jul 20</td><td><span class="badge badge-warn">Pending</span></td></tr>
+                <tr><td>PO-0044</td><td>BOLT-C050</td><td>1000</td><td>Jul 20</td><td>Jul 21</td><td><span class="badge badge-warn">Pending</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        AppState.PageTitle = "Scheduling";
+        AppState.OnChange += StateHasChanged;
+    }
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}

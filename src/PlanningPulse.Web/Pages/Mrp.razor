@@ -1,0 +1,33 @@
+@page "/mrp"
+@layout MainLayout
+@inject AppState AppState
+@implements IDisposable
+
+<div class="card fade-up">
+    <div class="card-header">
+        <div class="card-title">MRP Recommendations</div>
+        <span class="badge badge-info">3 pending</span>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Item</th><th>Type</th><th>Qty</th><th>Due</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>WIDGET-A001</td><td>Purchase</td><td>500</td><td>Jul 22</td><td><span class="badge badge-warn">Pending</span></td></tr>
+                <tr><td>FRAME-B200</td><td>Manufacture</td><td>120</td><td>Jul 20</td><td><span class="badge badge-danger">Urgent</span></td></tr>
+                <tr><td>BOLT-C050</td><td>Purchase</td><td>2,000</td><td>Jul 25</td><td><span class="badge badge-warn">Pending</span></td></tr>
+                <tr><td>MOTOR-D010</td><td>Purchase</td><td>30</td><td>Jul 28</td><td><span class="badge badge-success">Released</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        AppState.PageTitle = "MRP";
+        AppState.OnChange += StateHasChanged;
+    }
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}

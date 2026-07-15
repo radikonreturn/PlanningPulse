@@ -1,0 +1,88 @@
+﻿@inherits LayoutComponentBase
+@inject AppState AppState
+@implements IDisposable
+
+@if (!AppState.IsAuthenticated)
+{
+    @Body
+}
+else
+{
+    <div class="shell">
+        <nav class="sidebar">
+            <div class="sidebar-logo">
+                <div class="logo-icon">&#x26A1;</div>
+                <div class="logo-text">Planning<span>Pulse</span></div>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-label">Overview</div>
+                <NavLink class="nav-item" href="/" Match="NavLinkMatch.All" ActiveClass="active">
+                    <span class="nav-icon">&#x1F3E0;</span> Dashboard
+                </NavLink>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-label">Planning</div>
+                <NavLink class="nav-item" href="/mrp" ActiveClass="active">
+                    <span class="nav-icon">&#x1F4E6;</span> MRP
+                    <span class="nav-badge">3</span>
+                </NavLink>
+                <NavLink class="nav-item" href="/scheduling" ActiveClass="active">
+                    <span class="nav-icon">&#x1F4C5;</span> Scheduling
+                </NavLink>
+                <NavLink class="nav-item" href="/bom" ActiveClass="active">
+                    <span class="nav-icon">&#x1F527;</span> Bill of Materials
+                </NavLink>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-label">Operations</div>
+                <NavLink class="nav-item" href="/inventory" ActiveClass="active">
+                    <span class="nav-icon">&#x1F3ED;</span> Inventory
+                </NavLink>
+                <NavLink class="nav-item" href="/suppliers" ActiveClass="active">
+                    <span class="nav-icon">&#x1F69A;</span> Suppliers
+                </NavLink>
+                <NavLink class="nav-item" href="/production" ActiveClass="active">
+                    <span class="nav-icon">&#x2699;</span> Production Orders
+                </NavLink>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="user-card">
+                    <div class="user-avatar">@AppState.UserInitials</div>
+                    <div class="user-info">
+                        <div class="user-name">@AppState.UserName</div>
+                        <div class="user-role">@AppState.TenantName</div>
+                    </div>
+                    <span style="color:var(--text3);font-size:16px;cursor:pointer" @onclick="AppState.Logout">&#x23FB;</span>
+                </div>
+            </div>
+        </nav>
+
+        <div class="main">
+            <header class="topbar">
+                <div class="topbar-title">@AppState.PageTitle</div>
+                <div class="topbar-search">
+                    <span>&#x1F50D;</span>
+                    <input type="text" placeholder="Search items, orders&hellip;" />
+                </div>
+                <div class="topbar-btn">&#x1F514;</div>
+                <div class="topbar-btn">&#x2699;</div>
+            </header>
+            <div class="content">
+                @Body
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}
