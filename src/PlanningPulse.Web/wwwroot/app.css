@@ -1,4 +1,4 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -66,7 +66,8 @@ html, body { height: 100%; font-family: 'Inter', sans-serif; background: var(--b
 }
 .nav-item:hover { background: var(--bg3); color: var(--text); }
 .nav-item.active { background: rgba(99,102,241,.15); color: var(--accent); }
-.nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+.nav-item .nav-icon { font-size: 16px; width: 20px; display: flex; align-items: center; justify-content: center; }
+.nav-item .nav-icon svg { width: 16px; height: 16px; stroke: currentColor; fill: none; }
 .nav-item .nav-badge {
   margin-left: auto; background: var(--accent); color: #fff;
   font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 99px;

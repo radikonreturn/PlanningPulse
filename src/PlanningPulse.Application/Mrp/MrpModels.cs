@@ -18,7 +18,8 @@ public sealed record MrpItemSnapshot(
     MrpItemType Type,
     decimal? MinimumOrderQuantity,
     decimal? MaximumInventoryQuantity,
-    decimal? EconomicOrderQuantity);
+    decimal? EconomicOrderQuantity,
+    decimal SafetyStockQuantity = 0m);
 
 public enum MrpItemType
 {

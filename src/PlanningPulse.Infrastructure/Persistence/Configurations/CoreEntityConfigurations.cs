@@ -59,6 +59,7 @@ public sealed class ItemConfiguration : IEntityTypeConfiguration<Item>
         builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
         builder.Property(x => x.Description).HasMaxLength(1000);
         builder.Property(x => x.UnitOfMeasure).HasMaxLength(20).IsRequired();
+        builder.Property(x => x.SafetyStockQuantity).HasPrecision(18, 2).HasDefaultValue(0m);
         builder.HasIndex(x => new { x.TenantId, x.ItemNumber }).IsUnique();
         builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
     }
@@ -180,5 +181,23 @@ public sealed class LeadTimeConfiguration : IEntityTypeConfiguration<LeadTime>
         builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(x => x.Item).WithMany().HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+public sealed class ScheduledOperationConfiguration : IEntityTypeConfiguration<ScheduledOperation>
+{
+    public void Configure(EntityTypeBuilder<ScheduledOperation> builder)
+    {
+        builder.ToTable("ScheduledOperations");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.SetupHours).HasPrecision(18, 2);
+        builder.Property(x => x.RunHours).HasPrecision(18, 2);
+        builder.HasIndex(x => new { x.TenantId, x.ProductionOrderId, x.Sequence });
+        
+        builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.ProductionOrder).WithMany(x => x.ScheduledOperations).HasForeignKey(x => x.ProductionOrderId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Operation).WithMany().HasForeignKey(x => x.OperationId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.WorkCenter).WithMany().HasForeignKey(x => x.WorkCenterId).OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -17,4 +17,5 @@ public sealed class ProductionOrder : Entity, ITenantOwned
     public DateOnly DueDate { get; set; }
     public DateOnly? ScheduledStartDate { get; set; }
     public DateOnly? ScheduledEndDate { get; set; }
+    public ICollection<ScheduledOperation> ScheduledOperations { get; set; } = new List<ScheduledOperation>();
 }

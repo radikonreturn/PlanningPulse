@@ -1,0 +1,278 @@
+@page "/import"
+@layout MainLayout
+@using System.IO
+@using PlanningPulse.Application.Import
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@inject AppState AppState
+@inject IImportService ImportService
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<div class="card fade-up">
+    <div class="card-header">
+        <div class="card-title">Spreadsheet Data Import</div>
+        <p style="font-size:12px; color:var(--text3); margin-top:4px;">
+            Quickly load or update your manufacturing catalog by importing CSV or Excel (.xlsx) templates.
+        </p>
+    </div>
+
+    <!-- UI Message Alerts -->
+    @if (importResult != null)
+    {
+        @if (importResult.Success)
+        {
+            <div class="alert alert-success" style="margin: 20px; padding: 15px; border-radius: 8px; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); color: var(--success); display: flex; align-items: center; gap: 10px;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <div>
+                    <strong>Import Successful!</strong>
+                    <div style="font-size: 12px; margin-top: 4px; color: var(--text1);">
+                        Created: @importResult.CreatedCount | Updated: @importResult.UpdatedCount
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-danger" style="margin: 20px; padding: 15px; border-radius: 8px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); color: var(--accent); display: flex; align-items: center; gap: 10px;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                <div>
+                    <strong>Import Failed!</strong>
+                    <div style="font-size: 12px; margin-top: 4px; color: var(--text1);">
+                        The spreadsheet was rejected. No database changes were committed. Please fix the errors below and try again.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Report Table -->
+            @if (importResult.Errors.Any())
+            {
+                <div style="margin: 0 20px 20px 20px; border: 1px solid var(--bg3); border-radius: 8px; overflow: hidden;">
+                    <div style="background: var(--bg2); padding: 10px 15px; border-bottom: 1px solid var(--bg3); font-weight: 600; font-size: 13px; color: var(--text1);">
+                        Row-by-Row Validation Log
+                    </div>
+                    <div class="table-wrap" style="max-height: 250px; overflow-y: auto;">
+                        <table style="margin:0;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 100px;">Row Number</th>
+                                    <th>Error Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var err in importResult.Errors.OrderBy(x => x.RowNumber))
+                                {
+                                    <tr>
+                                        <td><strong>@(err.RowNumber == 0 ? "Global" : $"Row {err.RowNumber}")</strong></td>
+                                        <td style="color: var(--accent);">@err.ErrorMessage</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        }
+    }
+
+    <!-- Import Types Cards -->
+    <div style="padding: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+        
+        <!-- Card 1: Item Master -->
+        <div style="background: var(--bg2); border: 1px solid var(--bg3); padding: 20px; border-radius: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+                <div style="font-size: 16px; font-weight: 700; color: var(--text1); display: flex; align-items: center; gap: 8px;">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    Item Master Import
+                </div>
+                <p style="font-size: 12px; color: var(--text2); margin-top: 10px; line-height: 1.5;">
+                    Upload SKUs, descriptions, unit of measures, safety stock limits, and lead times.
+                </p>
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button class="btn btn-outline" style="font-size: 11px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 4px;" @onclick='() => DownloadTemplate("items", "excel")'>
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Excel Template
+                    </button>
+                    <button class="btn btn-outline" style="font-size: 11px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 4px;" @onclick='() => DownloadTemplate("items", "csv")'>
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        CSV Template
+                    </button>
+                </div>
+            </div>
+            <div style="margin-top: 25px; border-top: 1px dashed var(--bg3); padding-top: 15px;">
+                <label class="login-btn" style="width: 100%; text-align: center; margin: 0; padding: 8px 16px; font-size: 12px; cursor: pointer; display: inline-block;">
+                    Select & Upload
+                    <InputFile OnChange='(e) => HandleFileUpload(e, "items")' style="display:none;" />
+                </label>
+            </div>
+        </div>
+
+        <!-- Card 2: Bill of Materials -->
+        <div style="background: var(--bg2); border: 1px solid var(--bg3); padding: 20px; border-radius: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+                <div style="font-size: 16px; font-weight: 700; color: var(--text1); display: flex; align-items: center; gap: 8px;">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                    Bill of Materials (BOM)
+                </div>
+                <p style="font-size: 12px; color: var(--text2); margin-top: 10px; line-height: 1.5;">
+                    Upload relationship links linking parent products to components, quantity per assemblies, revisions, and scrap.
+                </p>
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button class="btn btn-outline" style="font-size: 11px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 4px;" @onclick='() => DownloadTemplate("bom", "excel")'>
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Excel Template
+                    </button>
+                    <button class="btn btn-outline" style="font-size: 11px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 4px;" @onclick='() => DownloadTemplate("bom", "csv")'>
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        CSV Template
+                    </button>
+                </div>
+            </div>
+            <div style="margin-top: 25px; border-top: 1px dashed var(--bg3); padding-top: 15px;">
+                <label class="login-btn" style="width: 100%; text-align: center; margin: 0; padding: 8px 16px; font-size: 12px; cursor: pointer; display: inline-block;">
+                    Select & Upload
+                    <InputFile OnChange='(e) => HandleFileUpload(e, "bom")' style="display:none;" />
+                </label>
+            </div>
+        </div>
+
+        <!-- Card 3: Inventory Levels -->
+        <div style="background: var(--bg2); border: 1px solid var(--bg3); padding: 20px; border-radius: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+                <div style="font-size: 16px; font-weight: 700; color: var(--text1); display: flex; align-items: center; gap: 8px;">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"></path></svg>
+                    Inventory Positions
+                </div>
+                <p style="font-size: 12px; color: var(--text2); margin-top: 10px; line-height: 1.5;">
+                    Upload current on-hand quantities, location codes, allocated units, and on-order statuses.
+                </p>
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button class="btn btn-outline" style="font-size: 11px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 4px;" @onclick='() => DownloadTemplate("inventory", "excel")'>
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Excel Template
+                    </button>
+                    <button class="btn btn-outline" style="font-size: 11px; padding: 6px 12px; display: inline-flex; align-items: center; gap: 4px;" @onclick='() => DownloadTemplate("inventory", "csv")'>
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        CSV Template
+                    </button>
+                </div>
+            </div>
+            <div style="margin-top: 25px; border-top: 1px dashed var(--bg3); padding-top: 15px;">
+                <label class="login-btn" style="width: 100%; text-align: center; margin: 0; padding: 8px 16px; font-size: 12px; cursor: pointer; display: inline-block;">
+                    Select & Upload
+                    <InputFile OnChange='(e) => HandleFileUpload(e, "inventory")' style="display:none;" />
+                </label>
+            </div>
+        </div>
+
+    </div>
+
+    @if (isUploading)
+    {
+        <div style="position: absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); display:flex; flex-direction:column; justify-content:center; align-items:center; border-radius:12px; z-index:100;">
+            <div style="background:var(--bg1); padding:20px 40px; border-radius:8px; border:1px solid var(--bg3); display:flex; align-items:center; gap:15px; box-shadow:0 8px 32px rgba(0,0,0,0.3)">
+                <div class="spinner" style="border: 3px solid var(--bg3); border-top: 3px solid var(--indigo); border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite;"></div>
+                <span style="font-weight: 600; color: var(--text1); font-size:14px;">Uploading and validating data...</span>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+
+@code {
+    private ImportResult? importResult;
+    private bool isUploading = false;
+
+    protected override void OnInitialized()
+    {
+        AppState.PageTitle = "Data Import";
+        AppState.OnChange += StateHasChanged;
+    }
+
+    private async Task DownloadTemplate(string type, string format)
+    {
+        byte[] bytes;
+        string extension = format == "excel" ? "xlsx" : "csv";
+        string fileName = $"{type}_template.{extension}";
+
+        if (type == "items")
+        {
+            bytes = await ImportService.GenerateItemTemplateAsync(format);
+        }
+        else if (type == "bom")
+        {
+            bytes = await ImportService.GenerateBomTemplateAsync(format);
+        }
+        else
+        {
+            bytes = await ImportService.GenerateInventoryTemplateAsync(format);
+        }
+
+        var base64 = Convert.ToBase64String(bytes);
+
+        // Inject dynamic helper to trigger download
+        await JSRuntime.InvokeVoidAsync("eval", @"
+            window.downloadFile = (fileName, base64Content) => {
+                const link = document.createElement('a');
+                link.download = fileName;
+                link.href = 'data:application/octet-stream;base64,' + base64Content;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+        ");
+
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, base64);
+    }
+
+    private async Task HandleFileUpload(InputFileChangeEventArgs e, string type)
+    {
+        isUploading = true;
+        importResult = null;
+        StateHasChanged();
+
+        try
+        {
+            var file = e.File;
+            if (file != null)
+            {
+                using var ms = new MemoryStream();
+                // 10MB Limit
+                await file.OpenReadStream(1024 * 1024 * 10).CopyToAsync(ms);
+                ms.Position = 0;
+
+                if (type == "items")
+                {
+                    importResult = await ImportService.ImportItemsAsync(ms, file.Name, CancellationToken.None);
+                }
+                else if (type == "bom")
+                {
+                    importResult = await ImportService.ImportBomsAsync(ms, file.Name, CancellationToken.None);
+                }
+                else
+                {
+                    importResult = await ImportService.ImportInventoryAsync(ms, file.Name, CancellationToken.None);
+                }
+
+                AppState.NotifyStateChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            importResult = new ImportResult(false, 0, 0, new[] { new ImportRowError(0, $"Upload error: {ex.Message}") });
+        }
+        finally
+        {
+            isUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}

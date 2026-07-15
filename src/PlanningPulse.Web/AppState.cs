@@ -1,4 +1,4 @@
-﻿namespace PlanningPulse.Web;
+namespace PlanningPulse.Web;
 
 public class AppState
 {
@@ -35,5 +35,19 @@ public class AppState
         NotifyStateChanged();
     }
 
-    private void NotifyStateChanged() => OnChange?.Invoke();
+    private int _pendingMrpCount;
+    public int PendingMrpCount
+    {
+        get => _pendingMrpCount;
+        set
+        {
+            if (_pendingMrpCount != value)
+            {
+                _pendingMrpCount = value;
+                NotifyStateChanged();
+            }
+        }
+    }
+
+    public void NotifyStateChanged() => OnChange?.Invoke();
 }

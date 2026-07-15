@@ -15,3 +15,4 @@ public enum SchedulingDirection
 public sealed record ScheduleRequest(Guid ProductionOrderId, CapacityMode CapacityMode, SchedulingDirection Direction);
 public sealed record ScheduledOperation(Guid OperationId, Guid WorkCenterId, DateTimeOffset StartUtc, DateTimeOffset EndUtc);
 public sealed record ScheduleResult(Guid ProductionOrderId, IReadOnlyCollection<ScheduledOperation> Operations);
+public sealed record WorkCenterLoad(Guid WorkCenterId, string WorkCenterCode, string WorkCenterName, decimal CapacityHours, decimal AllocatedHours, decimal LoadPercentage);

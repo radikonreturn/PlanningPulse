@@ -14,6 +14,9 @@ using PlanningPulse.Infrastructure.Auth;
 using PlanningPulse.Infrastructure.Mrp;
 using PlanningPulse.Infrastructure.Persistence;
 using PlanningPulse.Infrastructure.Tenancy;
+using PlanningPulse.Infrastructure.Scheduling;
+using PlanningPulse.Application.Import;
+using PlanningPulse.Infrastructure.Import;
 
 namespace PlanningPulse.Infrastructure;
 
@@ -46,8 +49,13 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IPasswordHasher<ApplicationUser>, PasswordHasher<ApplicationUser>>();
         services.AddScoped<IMrpPlanningDataProvider, EfMrpPlanningDataProvider>();
+        services.AddScoped<ILotSizingStrategy, LotForLotLotSizingStrategy>();
+        services.AddScoped<ILotSizingStrategy, MinMaxLotSizingStrategy>();
+        services.AddScoped<ILotSizingStrategy, EoqLotSizingStrategy>();
         services.AddScoped<IMrpEngine, MrpEngine>();
+        services.AddScoped<ISchedulingDataProvider, EfSchedulingDataProvider>();
         services.AddScoped<ISchedulingService, SchedulingService>();
+        services.AddScoped<IImportService, ImportService>();
 
         var jwtOptions = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
         if (string.IsNullOrWhiteSpace(jwtOptions.SigningKey))

@@ -1,33 +1,63 @@
 @page "/suppliers"
 @layout MainLayout
+@using Microsoft.EntityFrameworkCore
+@using PlanningPulse.Domain.Suppliers
 @inject AppState AppState
+@inject PlanningPulse.Infrastructure.Persistence.PlanningPulseDbContext DbContext
+@inject PlanningPulse.Application.Tenancy.ITenantSetter TenantSetter
 @implements IDisposable
 
 <div class="card fade-up">
     <div class="card-header">
-        <div class="card-title">Suppliers</div>
-        <span class="badge badge-info">12 active</span>
+        <div class="card-title">Suppliers Directory</div>
+        <span class="badge badge-info">@suppliers.Count active partners</span>
     </div>
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Supplier #</th><th>Name</th><th>Email</th><th>Lead Time</th><th>On-Time Rate</th><th>Status</th></tr>
+                <tr>
+                    <th>Supplier Number</th>
+                    <th>Supplier Name</th>
+                    <th>Email Address</th>
+                    <th>Status</th>
+                </tr>
             </thead>
             <tbody>
-                <tr><td>SUP-001</td><td>Acme Parts Co.</td><td>orders@acme.com</td><td>7 days</td><td>94%</td><td><span class="badge badge-success">Active</span></td></tr>
-                <tr><td>SUP-002</td><td>Global Fasteners</td><td>sales@gf.com</td><td>14 days</td><td>78%</td><td><span class="badge badge-warn">At Risk</span></td></tr>
-                <tr><td>SUP-003</td><td>Motor Dynamics</td><td>info@motordyn.com</td><td>21 days</td><td>88%</td><td><span class="badge badge-success">Active</span></td></tr>
-                <tr><td>SUP-004</td><td>Steel Works Ltd</td><td>—</td><td>10 days</td><td>61%</td><td><span class="badge badge-danger">Inactive</span></td></tr>
+                @if (suppliers.Count == 0)
+                {
+                    <tr>
+                        <td colspan="4" style="text-align:center;color:var(--text3);padding:20px;">No suppliers found.</td>
+                    </tr>
+                }
+                @foreach (var sup in suppliers)
+                {
+                    <tr>
+                        <td><strong>@sup.SupplierNumber</strong></td>
+                        <td><strong>@sup.Name</strong></td>
+                        <td><a href="mailto:@sup.Email" style="color:var(--indigo); text-decoration:none;">@sup.Email</a></td>
+                        <td>
+                            <span class="badge @(sup.IsActive ? "badge-success" : "badge-danger")">
+                                @(sup.IsActive ? "Active" : "Inactive")
+                            </span>
+                        </td>
+                    </tr>
+                }
             </tbody>
         </table>
     </div>
 </div>
 
 @code {
-    protected override void OnInitialized()
+    private List<Supplier> suppliers = new();
+
+    protected override async Task OnInitializedAsync()
     {
         AppState.PageTitle = "Suppliers";
         AppState.OnChange += StateHasChanged;
+
+        TenantSetter.SetTenant(AppState.TenantId);
+        suppliers = await DbContext.Suppliers.ToListAsync();
     }
+
     public void Dispose() => AppState.OnChange -= StateHasChanged;
 }

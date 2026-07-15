@@ -1,6 +1,13 @@
-﻿@page "/"
+@page "/"
 @layout MainLayout
+@using Microsoft.EntityFrameworkCore
+@using PlanningPulse.Application.Mrp
+@using PlanningPulse.Domain.Items
+@using PlanningPulse.Domain.Production
 @inject AppState AppState
+@inject PlanningPulse.Infrastructure.Persistence.PlanningPulseDbContext DbContext
+@inject PlanningPulse.Application.Tenancy.ITenantSetter TenantSetter
+@inject IMrpEngine MrpEngine
 @implements IDisposable
 
 @if (!AppState.IsAuthenticated)
@@ -9,140 +16,249 @@
 }
 else
 {
-    <div class="kpi-grid fade-up">
-        <div class="kpi-card indigo">
-            <div class="kpi-icon">📦</div>
-            <div class="kpi-value">1,284</div>
-            <div class="kpi-label">Active Items</div>
-            <div class="kpi-delta up">↑ 12 this week</div>
+    @if (isLoading)
+    {
+        <div style="text-align:center;color:var(--text3);padding:100px;">
+            <p>Loading Dashboard metrics...</p>
         </div>
-        <div class="kpi-card cyan">
-            <div class="kpi-icon">🗓️</div>
-            <div class="kpi-value">47</div>
-            <div class="kpi-label">Open Production Orders</div>
-            <div class="kpi-delta up">↑ 3 new today</div>
-        </div>
-        <div class="kpi-card green">
-            <div class="kpi-icon">✅</div>
-            <div class="kpi-value">98.2%</div>
-            <div class="kpi-label">Schedule Adherence</div>
-            <div class="kpi-delta up">↑ 0.4% vs last week</div>
-        </div>
-        <div class="kpi-card amber">
-            <div class="kpi-icon">⚠️</div>
-            <div class="kpi-value">3</div>
-            <div class="kpi-label">MRP Alerts</div>
-            <div class="kpi-delta down">↑ 2 since yesterday</div>
-        </div>
-    </div>
-
-    <div class="grid-2 fade-up-2">
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">MRP Recommendations</div>
-                <span class="badge badge-info">3 pending</span>
+    }
+    else
+    {
+        <div class="kpi-grid fade-up">
+            <div class="kpi-card indigo">
+                <div class="kpi-icon">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                </div>
+                <div class="kpi-value">@activeItemsCount</div>
+                <div class="kpi-label">Active Items</div>
+                <div class="kpi-delta up">Syncing from DB</div>
             </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr><th>Item</th><th>Type</th><th>Qty</th><th>Due</th><th>Status</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td>WIDGET-A001</td><td>Purchase</td><td>500</td><td>Jul 22</td><td><span class="badge badge-warn">Pending</span></td></tr>
-                        <tr><td>FRAME-B200</td><td>Manufacture</td><td>120</td><td>Jul 20</td><td><span class="badge badge-danger">Urgent</span></td></tr>
-                        <tr><td>BOLT-C050</td><td>Purchase</td><td>2,000</td><td>Jul 25</td><td><span class="badge badge-warn">Pending</span></td></tr>
-                        <tr><td>MOTOR-D010</td><td>Purchase</td><td>30</td><td>Jul 28</td><td><span class="badge badge-success">Released</span></td></tr>
-                    </tbody>
-                </table>
+            <div class="kpi-card cyan">
+                <div class="kpi-icon">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                </div>
+                <div class="kpi-value">@openOrdersCount</div>
+                <div class="kpi-label">Open Production Orders</div>
+                <div class="kpi-delta up">Scheduled runs</div>
+            </div>
+            <div class="kpi-card green">
+                <div class="kpi-icon">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                </div>
+                <div class="kpi-value">@scheduleAdherence%</div>
+                <div class="kpi-label">Schedule Adherence</div>
+                <div class="kpi-delta up">On-time delivery</div>
+            </div>
+            <div class="kpi-card amber">
+                <div class="kpi-icon">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                </div>
+                <div class="kpi-value">@mrpAlertsCount</div>
+                <div class="kpi-label">MRP Alerts</div>
+                <div class="kpi-delta down">Exceptions requiring action</div>
             </div>
         </div>
 
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">Inventory Status</div>
-            </div>
-            <div class="donut-wrap" style="margin-bottom:20px">
-                <div class="donut"></div>
-                <div class="donut-legend">
-                    <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>In Stock (42%)</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div>Allocated (26%)</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:var(--warn)"></div>On Order (17%)</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:var(--bg3)"></div>No Stock (15%)</div>
+        <div class="grid-2 fade-up-2">
+            <!-- MRP Recommendations summary card -->
+            <div class="card">
+                <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <div class="card-title">MRP Recommendations</div>
+                    <span class="badge badge-info">@dashboardRecs.Count shown</span>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Type</th>
+                                <th>Qty</th>
+                                <th>Due Date</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (dashboardRecs.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="5" style="text-align:center;color:var(--text3);padding:20px;">No recommendations pending.</td>
+                                </tr>
+                            }
+                            @foreach (var rec in dashboardRecs)
+                            {
+                                var item = itemsById.GetValueOrDefault(rec.ItemId);
+                                var itemNumber = item?.ItemNumber ?? "Unknown";
+
+                                <tr>
+                                    <td><strong>@itemNumber</strong></td>
+                                    <td>@rec.RecommendationType</td>
+                                    <td><strong>@rec.Quantity.ToString("G29")</strong></td>
+                                    <td>@rec.DueDate.ToString("MMM dd")</td>
+                                    <td>
+                                        @if (rec.RecommendationType == "Exception")
+                                        {
+                                            <span class="badge badge-danger">Urgent</span>
+                                        }
+                                        else if (rec.RecommendationType == "Purchase")
+                                        {
+                                            <span class="badge badge-success">Pending</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge badge-warn">Pending</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
                 </div>
             </div>
-            <div style="display:flex;flex-direction:column;gap:10px">
-                <div>
-                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-                        <span style="color:var(--text2)">Warehousing Capacity</span><span>78%</span>
+
+            <!-- Inventory Health Donut chart placeholder (styled with css) -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Inventory Health Overview</div>
+                </div>
+                <div class="donut-wrap" style="margin-bottom:20px">
+                    <div class="donut"></div>
+                    <div class="donut-legend">
+                        <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>In Stock (42%)</div>
+                        <div class="legend-item"><div class="legend-dot" style="background:var(--success)"></div>Allocated (26%)</div>
+                        <div class="legend-item"><div class="legend-dot" style="background:var(--warn)"></div>On Order (17%)</div>
+                        <div class="legend-item"><div class="legend-dot" style="background:var(--bg3)"></div>No Stock (15%)</div>
                     </div>
-                    <div class="progress"><div class="progress-bar indigo" style="width:78%"></div></div>
                 </div>
-                <div>
-                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-                        <span style="color:var(--text2)">BOM Coverage</span><span>91%</span>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                    <div>
+                        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                            <span style="color:var(--text2)">Warehousing Capacity</span><span>78%</span>
+                        </div>
+                        <div class="progress"><div class="progress-bar indigo" style="width:78%"></div></div>
                     </div>
-                    <div class="progress"><div class="progress-bar green" style="width:91%"></div></div>
-                </div>
-                <div>
-                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-                        <span style="color:var(--text2)">Supplier On-Time Rate</span><span>64%</span>
+                    <div>
+                        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                            <span style="color:var(--text2)">BOM Coverage</span><span>100%</span>
+                        </div>
+                        <div class="progress"><div class="progress-bar green" style="width:100%"></div></div>
                     </div>
-                    <div class="progress"><div class="progress-bar amber" style="width:64%"></div></div>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="grid-2 fade-up-3">
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">Weekly Throughput</div>
-            </div>
-            <div class="spark">
-                <div class="spark-bar" style="height:55%"></div>
-                <div class="spark-bar" style="height:70%"></div>
-                <div class="spark-bar" style="height:45%"></div>
-                <div class="spark-bar" style="height:80%"></div>
-                <div class="spark-bar" style="height:65%"></div>
-                <div class="spark-bar highlight" style="height:90%"></div>
-                <div class="spark-bar" style="height:75%"></div>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:6px">
-                <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
             </div>
         </div>
 
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title">Recent Activity</div>
+        <div class="grid-2 fade-up-3">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Weekly Throughput</div>
+                </div>
+                <div class="spark">
+                    <div class="spark-bar" style="height:55%"></div>
+                    <div class="spark-bar" style="height:70%"></div>
+                    <div class="spark-bar" style="height:45%"></div>
+                    <div class="spark-bar" style="height:80%"></div>
+                    <div class="spark-bar" style="height:65%"></div>
+                    <div class="spark-bar highlight" style="height:90%"></div>
+                    <div class="spark-bar" style="height:75%"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:6px">
+                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                </div>
             </div>
-            <div class="activity-list">
-                <div class="activity-item">
-                    <div class="activity-dot indigo"></div>
-                    <div><div class="activity-text">MRP run completed for Tenant Alpha</div><div class="activity-time">2 min ago</div></div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Recent Activity</div>
                 </div>
-                <div class="activity-item">
-                    <div class="activity-dot green"></div>
-                    <div><div class="activity-text">Production order PO-0047 scheduled</div><div class="activity-time">14 min ago</div></div>
-                </div>
-                <div class="activity-item">
-                    <div class="activity-dot amber"></div>
-                    <div><div class="activity-text">Low stock alert: BOLT-C050 below safety level</div><div class="activity-time">1 hr ago</div></div>
-                </div>
-                <div class="activity-item">
-                    <div class="activity-dot cyan"></div>
-                    <div><div class="activity-text">Supplier lead time updated to 7 days</div><div class="activity-time">3 hr ago</div></div>
+                <div class="activity-list">
+                    <div class="activity-item">
+                        <div class="activity-dot indigo"></div>
+                        <div><div class="activity-text">MRP engine calculation complete</div><div class="activity-time">Just now</div></div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-dot green"></div>
+                        <div><div class="activity-text">Database seeded with manufacturing demo dataset</div><div class="activity-time">5 min ago</div></div>
+                    </div>
+                    @if (openOrdersCount > 0)
+                    {
+                        <div class="activity-item">
+                            <div class="activity-dot cyan"></div>
+                            <div><div class="activity-text">@openOrdersCount open production orders synced</div><div class="activity-time">5 min ago</div></div>
+                        </div>
+                    }
                 </div>
             </div>
         </div>
-    </div>
+    }
 }
 
 @code {
-    protected override void OnInitialized()
+    private int activeItemsCount = 0;
+    private int openOrdersCount = 0;
+    private decimal scheduleAdherence = 100m;
+    private int mrpAlertsCount = 0;
+    private List<MrpRecommendation> dashboardRecs = new();
+    private Dictionary<Guid, Item> itemsById = new();
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
     {
         AppState.PageTitle = "Dashboard";
         AppState.OnChange += StateHasChanged;
+
+        if (AppState.IsAuthenticated)
+        {
+            await LoadDashboardData();
+        }
     }
+
+    private async Task LoadDashboardData()
+    {
+        isLoading = true;
+        try
+        {
+            TenantSetter.SetTenant(AppState.TenantId);
+
+            itemsById = await DbContext.Items.AsNoTracking().ToDictionaryAsync(x => x.Id);
+            activeItemsCount = await DbContext.Items.CountAsync(x => x.IsActive);
+
+            var openOrders = await DbContext.ProductionOrders
+                .AsNoTracking()
+                .Where(x => x.Status != ProductionOrderStatus.Completed && x.Status != ProductionOrderStatus.Cancelled)
+                .ToListAsync();
+
+            openOrdersCount = openOrders.Count;
+
+            if (openOrdersCount > 0)
+            {
+                var adherent = openOrders.Count(x => !x.ScheduledEndDate.HasValue || x.ScheduledEndDate <= x.DueDate);
+                scheduleAdherence = Math.Round((decimal)adherent / openOrdersCount * 100, 1);
+            }
+            else
+            {
+                scheduleAdherence = 100m;
+            }
+
+            var grossReqs = openOrders
+                .Select(x => new GrossRequirement(x.ItemId, x.Quantity, x.DueDate))
+                .ToArray();
+
+            var mrpResult = await MrpEngine.PlanAsync(grossReqs, LotSizingMethod.LotForLot, CancellationToken.None);
+            dashboardRecs = mrpResult.Take(5).ToList();
+
+            mrpAlertsCount = mrpResult.Count(x => x.RecommendationType == "Exception");
+            
+            AppState.PendingMrpCount = mrpResult.Count(x => x.RecommendationType != "Exception");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading dashboard: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
     public void Dispose() => AppState.OnChange -= StateHasChanged;
 }

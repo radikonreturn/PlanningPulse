@@ -1,33 +1,188 @@
 @page "/mrp"
 @layout MainLayout
+@using Microsoft.EntityFrameworkCore
+@using PlanningPulse.Application.Mrp
+@using PlanningPulse.Domain.Items
+@using PlanningPulse.Domain.Production
 @inject AppState AppState
+@inject PlanningPulse.Infrastructure.Persistence.PlanningPulseDbContext DbContext
+@inject PlanningPulse.Application.Tenancy.ITenantSetter TenantSetter
+@inject IMrpEngine MrpEngine
 @implements IDisposable
 
 <div class="card fade-up">
-    <div class="card-header">
-        <div class="card-title">MRP Recommendations</div>
-        <span class="badge badge-info">3 pending</span>
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+            <div class="card-title">MRP Recommendations</div>
+            <p style="font-size:12px; color:var(--text3); margin-top:4px;">
+                Generates supply recommendations based on safety stock, inventory levels, and outstanding production orders.
+            </p>
+        </div>
+        <div style="display:flex; gap:12px; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:12px; color:var(--text2); font-weight:600;">Lot Sizing:</label>
+                <select class="form-input" style="padding:6px 12px; font-size:12px; width:180px; margin:0;" @bind="selectedMethod">
+                    <option value="@LotSizingMethod.LotForLot">Lot-For-Lot</option>
+                    <option value="@LotSizingMethod.MinMax">Min / Max</option>
+                    <option value="@LotSizingMethod.EconomicOrderQuantity">Economic Order Qty (EOQ)</option>
+                </select>
+            </div>
+            <button class="login-btn" style="padding:8px 16px; font-size:12px; margin:0; width:auto; display:inline-flex; align-items:center; gap:6px;" @onclick="CalculateMrp" disabled="@isCalculating">
+                @if (isCalculating)
+                {
+                    <span>Calculating...</span>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                    <span>Run MRP</span>
+                }
+            </button>
+        </div>
     </div>
+    
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Item</th><th>Type</th><th>Qty</th><th>Due</th><th>Status</th></tr>
+                <tr>
+                    <th>Item Number</th>
+                    <th>Name</th>
+                    <th>Recommendation</th>
+                    <th>Quantity</th>
+                    <th>Release Date</th>
+                    <th>Due Date</th>
+                    <th>Details / Reason</th>
+                </tr>
             </thead>
             <tbody>
-                <tr><td>WIDGET-A001</td><td>Purchase</td><td>500</td><td>Jul 22</td><td><span class="badge badge-warn">Pending</span></td></tr>
-                <tr><td>FRAME-B200</td><td>Manufacture</td><td>120</td><td>Jul 20</td><td><span class="badge badge-danger">Urgent</span></td></tr>
-                <tr><td>BOLT-C050</td><td>Purchase</td><td>2,000</td><td>Jul 25</td><td><span class="badge badge-warn">Pending</span></td></tr>
-                <tr><td>MOTOR-D010</td><td>Purchase</td><td>30</td><td>Jul 28</td><td><span class="badge badge-success">Released</span></td></tr>
+                @if (isCalculating)
+                {
+                    <tr>
+                        <td colspan="7" style="text-align:center;color:var(--text3);padding:30px;">
+                            Running Material Requirements Planning engine...
+                        </td>
+                    </tr>
+                }
+                else if (recommendations.Count == 0)
+                {
+                    <tr>
+                        <td colspan="7" style="text-align:center;color:var(--text3);padding:30px;">
+                            No pending recommendations. All requirements satisfied.
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var rec in recommendations)
+                    {
+                        var item = itemsById.GetValueOrDefault(rec.ItemId);
+                        var itemNumber = item?.ItemNumber ?? "Unknown";
+                        var itemName = item?.Name ?? "Item missing from database";
+
+                        <tr>
+                            <td><strong>@itemNumber</strong></td>
+                            <td>@itemName</td>
+                            <td>
+                                @if (rec.RecommendationType == "Exception")
+                                {
+                                    <span class="badge badge-danger" style="display:inline-flex; align-items:center; gap:4px;">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                                        Exception
+                                    </span>
+                                }
+                                else if (rec.RecommendationType == "Purchase")
+                                {
+                                    <span class="badge badge-success" style="display:inline-flex; align-items:center; gap:4px;">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                                        Purchase
+                                    </span>
+                                }
+                                else if (rec.RecommendationType == "Production")
+                                {
+                                    <span class="badge badge-indigo" style="display:inline-flex; align-items:center; gap:4px;">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                                        Manufacture
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-info">@rec.RecommendationType</span>
+                                }
+                            </td>
+                            <td><strong>@rec.Quantity.ToString("G29")</strong></td>
+                            <td class="@(rec.ReleaseDate < DateOnly.FromDateTime(DateTime.UtcNow) && rec.RecommendationType != "Exception" ? "text-danger" : "")" style="font-weight:600;">
+                                @rec.ReleaseDate.ToString("MMM dd, yyyy")
+                                @if (rec.ReleaseDate < DateOnly.FromDateTime(DateTime.UtcNow) && rec.RecommendationType != "Exception")
+                                {
+                                    <span style="font-size:10px; display:block; color:var(--accent)">PAST DUE RELEASE</span>
+                                }
+                            </td>
+                            <td>@rec.DueDate.ToString("MMM dd, yyyy")</td>
+                            <td style="font-size:11px; color:var(--text2); max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="@rec.Reason">
+                                @rec.Reason
+                            </td>
+                        </tr>
+                    }
+                }
             </tbody>
         </table>
     </div>
 </div>
 
 @code {
-    protected override void OnInitialized()
+    private List<MrpRecommendation> recommendations = new();
+    private Dictionary<Guid, Item> itemsById = new();
+    private LotSizingMethod selectedMethod = LotSizingMethod.LotForLot;
+    private bool isCalculating = false;
+
+    protected override async Task OnInitializedAsync()
     {
-        AppState.PageTitle = "MRP";
+        AppState.PageTitle = "MRP Recommendations";
         AppState.OnChange += StateHasChanged;
+
+        TenantSetter.SetTenant(AppState.TenantId);
+        itemsById = await DbContext.Items.AsNoTracking().ToDictionaryAsync(x => x.Id);
+
+        await CalculateMrp();
     }
+
+    private async Task CalculateMrp()
+    {
+        isCalculating = true;
+        StateHasChanged();
+
+        try
+        {
+            TenantSetter.SetTenant(AppState.TenantId);
+
+            // Refetch items in case they changed
+            itemsById = await DbContext.Items.AsNoTracking().ToDictionaryAsync(x => x.Id);
+
+            // Query open production orders as gross requirements
+            var openOrders = await DbContext.ProductionOrders
+                .AsNoTracking()
+                .Where(x => x.Status != ProductionOrderStatus.Completed && x.Status != ProductionOrderStatus.Cancelled)
+                .ToListAsync();
+
+            var grossReqs = openOrders
+                .Select(x => new GrossRequirement(x.ItemId, x.Quantity, x.DueDate))
+                .ToArray();
+
+            var result = await MrpEngine.PlanAsync(grossReqs, selectedMethod, CancellationToken.None);
+            recommendations = result.ToList();
+
+            AppState.PendingMrpCount = recommendations.Count(x => x.RecommendationType != "Exception");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error running MRP engine: {ex.Message}");
+        }
+        finally
+        {
+            isCalculating = false;
+            StateHasChanged();
+        }
+    }
+
     public void Dispose() => AppState.OnChange -= StateHasChanged;
 }

@@ -1,33 +1,337 @@
 @page "/scheduling"
 @layout MainLayout
+@using Microsoft.EntityFrameworkCore
+@using PlanningPulse.Application.Scheduling
+@using PlanningPulse.Domain.Production
+@using PlanningPulse.Domain.Routings
 @inject AppState AppState
+@inject PlanningPulse.Infrastructure.Persistence.PlanningPulseDbContext DbContext
+@inject PlanningPulse.Application.Tenancy.ITenantSetter TenantSetter
+@inject ISchedulingService SchedulingService
 @implements IDisposable
 
-<div class="card fade-up">
-    <div class="card-header">
-        <div class="card-title">Production Schedule</div>
-        <span class="badge badge-info">Week 29</span>
+<div class="grid-2 fade-up">
+    <!-- Production Orders to Schedule -->
+    <div class="card" style="grid-column: span 2;">
+        <div class="card-header">
+            <div class="card-title">Open Production Orders</div>
+            <span class="badge badge-info">@productionOrders.Count orders</span>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Order No</th>
+                        <th>Item</th>
+                        <th>Quantity</th>
+                        <th>Due Date</th>
+                        <th>Scheduled Start</th>
+                        <th>Scheduled End</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (productionOrders.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="8" style="text-align:center;color:var(--text3);padding:20px;">No production orders found.</td>
+                        </tr>
+                    }
+                    @foreach (var po in productionOrders)
+                    {
+                        <tr>
+                            <td><strong>@po.OrderNumber</strong></td>
+                            <td><strong>@po.Item.ItemNumber</strong> - @po.Item.Name</td>
+                            <td>@po.Quantity.ToString("G29")</td>
+                            <td>@po.DueDate.ToString("MMM dd, yyyy")</td>
+                            <td>
+                                @if (po.ScheduledStartDate.HasValue)
+                                {
+                                    <span style="font-weight:600; color:var(--text1);">@po.ScheduledStartDate.Value.ToString("MMM dd, yyyy")</span>
+                                }
+                                else
+                                {
+                                    <span style="color:var(--text3); font-style:italic;">Unscheduled</span>
+                                }
+                            </td>
+                            <td>
+                                @if (po.ScheduledEndDate.HasValue)
+                                {
+                                    <span style="font-weight:600; color:var(--text1);">@po.ScheduledEndDate.Value.ToString("MMM dd, yyyy")</span>
+                                }
+                                else
+                                {
+                                    <span style="color:var(--text3); font-style:italic;">Unscheduled</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="badge @GetStatusBadgeClass(po.Status)">
+                                    @po.Status
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; display:inline-flex; align-items:center; gap:4px;" @onclick="() => OpenScheduleDialog(po.Id)">
+                                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                    Schedule
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     </div>
-    <div class="table-wrap">
-        <table>
-            <thead>
-                <tr><th>Order</th><th>Item</th><th>Qty</th><th>Start</th><th>End</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-                <tr><td>PO-0047</td><td>WIDGET-A001</td><td>200</td><td>Jul 15</td><td>Jul 17</td><td><span class="badge badge-info">Scheduled</span></td></tr>
-                <tr><td>PO-0046</td><td>FRAME-B200</td><td>50</td><td>Jul 14</td><td>Jul 16</td><td><span class="badge badge-success">In Progress</span></td></tr>
-                <tr><td>PO-0045</td><td>MOTOR-D010</td><td>15</td><td>Jul 18</td><td>Jul 20</td><td><span class="badge badge-warn">Pending</span></td></tr>
-                <tr><td>PO-0044</td><td>BOLT-C050</td><td>1000</td><td>Jul 20</td><td>Jul 21</td><td><span class="badge badge-warn">Pending</span></td></tr>
-            </tbody>
-        </table>
+</div>
+
+@if (schedulingOrderId.HasValue)
+{
+    var selectedPo = productionOrders.FirstOrDefault(x => x.Id == schedulingOrderId.Value);
+    if (selectedPo != null)
+    {
+        <div class="modal-backdrop" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:1000;">
+            <div class="card" style="width:450px; background:var(--bg1); border:1px solid var(--bg3); padding:20px; box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+                <div class="card-header" style="margin-bottom:15px; padding-bottom:10px; border-bottom:1px solid var(--bg3)">
+                    <div class="card-title">Schedule Order @selectedPo.OrderNumber</div>
+                </div>
+                <div style="margin-bottom:15px;">
+                    <div class="form-group">
+                        <label class="form-label">Capacity Constrained</label>
+                        <select class="form-input" @bind="selectedCapacityMode">
+                            <option value="@CapacityMode.Finite">Finite Capacity (Respect Limits)</option>
+                            <option value="@CapacityMode.Infinite">Infinite Capacity (Ignore Limits)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Scheduling Mode</label>
+                        <select class="form-input" @bind="selectedDirection">
+                            <option value="@SchedulingDirection.Forward">Forward Scheduling (Start from Today)</option>
+                            <option value="@SchedulingDirection.Backward">Backward Scheduling (Start from Due Date)</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button class="btn btn-outline" @onclick="CloseScheduleDialog">Cancel</button>
+                    <button class="login-btn" style="width:auto; margin:0; padding:8px 20px;" @onclick="ExecuteSchedule">Apply Schedule</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+<!-- Bottleneck warning panel -->
+@if (workCenterLoads.Any(x => x.LoadPercentage > 100))
+{
+    <div class="card fade-up" style="margin-top:20px; border: 1px solid rgba(239,68,68,.3); background: rgba(239,68,68,.03)">
+        <div class="card-header">
+            <div class="card-title" style="color: var(--accent); display:flex; align-items:center; gap:6px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                Bottleneck Alert (Capacity Overload)
+            </div>
+        </div>
+        <div style="padding: 10px 20px;">
+            <p style="font-size:12px; color:var(--text2); margin-bottom:10px;">
+                The following work centers exceed 100% capacity loading over the rolling 30-day window:
+            </p>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                @foreach (var load in workCenterLoads.Where(x => x.LoadPercentage > 100))
+                {
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg2); padding:10px 15px; border-radius:8px; border-left:4px solid var(--accent)">
+                        <div>
+                            <strong style="color:var(--text1);">@load.WorkCenterCode</strong> - @load.WorkCenterName
+                        </div>
+                        <div>
+                            <span class="badge badge-danger">@load.LoadPercentage% Load</span>
+                            <span style="font-size:11px; margin-left:10px; color:var(--text2);">(@load.AllocatedHours.ToString("N1") / @load.CapacityHours.ToString("N1") Hours)</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Gantt Chart View -->
+<div class="card fade-up" style="margin-top:20px;">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+            <div class="card-title">Gantt View — WorkCenter Schedules</div>
+            <p style="font-size:11px; color:var(--text3); margin-top:2px;">Showing scheduled operations per WorkCenter over a 14-day rolling timeline.</p>
+        </div>
+        <div style="display:flex; gap:10px; font-size:11px; color:var(--text2);">
+            <div style="display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:12px; height:12px; border-radius:3px; background:linear-gradient(135deg, #6366f1, #4f46e5)"></span> Scheduled Op</div>
+        </div>
+    </div>
+    
+    <div style="padding:20px;">
+        <!-- Gantt Timeline Header -->
+        <div style="display:grid; grid-template-columns: 200px repeat(14, 1fr); border-bottom: 2px solid var(--bg3); padding-bottom:8px; text-align:center; font-size:10px; font-weight:600; color:var(--text2);">
+            <div style="text-align:left; font-size:11px;">Work Center</div>
+            @for (int i = 0; i < 14; i++)
+            {
+                var day = today.AddDays(i);
+                <div>
+                    <div>@day.ToString("ddd")</div>
+                    <div style="color:var(--text1); font-weight:700;">@day.Day</div>
+                </div>
+            }
+        </div>
+
+        <!-- Gantt Rows -->
+        @foreach (var wc in workCenters)
+        {
+            var wcOps = allScheduledOperations.Where(x => x.WorkCenterId == wc.Id).ToList();
+            var wcLoad = workCenterLoads.FirstOrDefault(x => x.WorkCenterId == wc.Id);
+
+            <div style="display:grid; grid-template-columns: 200px repeat(14, 1fr); align-items:center; border-bottom:1px solid var(--bg3); height:64px; position:relative;">
+                <!-- WC Info -->
+                <div style="padding-right:15px; font-size:12px;">
+                    <div style="font-weight:700; color:var(--text1)">@wc.Code</div>
+                    <div style="font-size:10px; color:var(--text3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="@wc.Name">@wc.Name</div>
+                    @if (wcLoad != null)
+                    {
+                        <div style="font-size:10px; margin-top:2px;">
+                            <span class="badge @(wcLoad.LoadPercentage > 100 ? "badge-danger" : wcLoad.LoadPercentage > 80 ? "badge-warn" : "badge-success")" style="padding:1px 4px; font-size:9px;">
+                                @wcLoad.LoadPercentage% Load
+                            </span>
+                        </div>
+                    }
+                </div>
+
+                <!-- Timeline Grid Background -->
+                @for (int i = 0; i < 14; i++)
+                {
+                    <div style="height:100%; border-right:1px dashed var(--bg3); background: @(today.AddDays(i).DayOfWeek == DayOfWeek.Saturday || today.AddDays(i).DayOfWeek == DayOfWeek.Sunday ? "rgba(255,255,255,0.01)" : "none")"></div>
+                }
+
+                <!-- Operation Bars overlay -->
+                <div style="position:absolute; left:200px; right:0; top:12px; bottom:12px; pointer-events:none;">
+                    @foreach (var op in wcOps)
+                    {
+                        var start = op.ScheduledStartDate;
+                        var end = op.ScheduledEndDate;
+                        
+                        var timelineStart = today;
+                        var timelineEnd = today.AddDays(13);
+
+                        // If operation falls in visible timeline range
+                        if (end >= timelineStart && start <= timelineEnd)
+                        {
+                            var displayStart = start < timelineStart ? timelineStart : start;
+                            var displayEnd = end > timelineEnd ? timelineEnd : end;
+
+                            var daysOffset = displayStart.DayNumber - timelineStart.DayNumber;
+                            var duration = displayEnd.DayNumber - displayStart.DayNumber + 1;
+
+                            var leftPercent = (daysOffset / 14.0) * 100;
+                            var widthPercent = (duration / 14.0) * 100;
+
+                            <div style="position:absolute; left:@(leftPercent.ToString("F3"))%; width:@(widthPercent.ToString("F3"))%; height:100%; background:linear-gradient(135deg, var(--indigo), var(--accent)); border-radius:6px; box-shadow: 0 2px 8px rgba(99,102,241,0.2); display:flex; flex-direction:column; justify-content:center; align-items:center; padding:2px 6px; pointer-events:auto; cursor:pointer; overflow:hidden;"
+                                 title="Order: @op.ProductionOrder.OrderNumber | Op: @op.Name | Start: @op.ScheduledStartDate | End: @op.ScheduledEndDate | Total: @((op.SetupHours + op.RunHours).ToString("N1")) Hours">
+                                <span style="font-size:9px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.5); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%; text-align:center;">
+                                    @op.ProductionOrder.OrderNumber
+                                </span>
+                                <span style="font-size:8px; color:rgba(255,255,255,0.85); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%; text-align:center;">
+                                    @op.Name
+                                </span>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        }
     </div>
 </div>
 
 @code {
-    protected override void OnInitialized()
+    private List<ProductionOrder> productionOrders = new();
+    private List<WorkCenterLoad> workCenterLoads = new();
+    private List<PlanningPulse.Domain.Production.ScheduledOperation> allScheduledOperations = new();
+    private List<WorkCenter> workCenters = new();
+
+    private Guid? schedulingOrderId;
+    private CapacityMode selectedCapacityMode = CapacityMode.Finite;
+    private SchedulingDirection selectedDirection = SchedulingDirection.Forward;
+    
+    private DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+    protected override async Task OnInitializedAsync()
     {
-        AppState.PageTitle = "Scheduling";
+        AppState.PageTitle = "Production Scheduling";
         AppState.OnChange += StateHasChanged;
+
+        await LoadData();
     }
+
+    private async Task LoadData()
+    {
+        TenantSetter.SetTenant(AppState.TenantId);
+
+        productionOrders = await DbContext.ProductionOrders
+            .Include(x => x.Item)
+            .ToListAsync();
+
+        workCenters = await DbContext.WorkCenters
+            .Where(x => x.IsActive)
+            .ToListAsync();
+
+        allScheduledOperations = await DbContext.ScheduledOperations
+            .Include(x => x.ProductionOrder)
+            .ToListAsync();
+
+        workCenterLoads = (await SchedulingService.GetWorkCenterLoadsAsync(rollingDays: 30, CancellationToken.None)).ToList();
+    }
+
+    private void OpenScheduleDialog(Guid productionOrderId)
+    {
+        schedulingOrderId = productionOrderId;
+        selectedCapacityMode = CapacityMode.Finite;
+        selectedDirection = SchedulingDirection.Forward;
+    }
+
+    private void CloseScheduleDialog()
+    {
+        schedulingOrderId = null;
+    }
+
+    private async Task ExecuteSchedule()
+    {
+        if (!schedulingOrderId.HasValue) return;
+
+        try
+        {
+            var req = new ScheduleRequest(schedulingOrderId.Value, selectedCapacityMode, selectedDirection);
+            await SchedulingService.ScheduleAsync(req, CancellationToken.None);
+            
+            // Reload page data
+            await LoadData();
+            
+            // Trigger UI update
+            AppState.NotifyStateChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error scheduling order: {ex.Message}");
+        }
+        finally
+        {
+            schedulingOrderId = null;
+            StateHasChanged();
+        }
+    }
+
+    private string GetStatusBadgeClass(ProductionOrderStatus status)
+    {
+        return status switch
+        {
+            ProductionOrderStatus.Planned => "badge-info",
+            ProductionOrderStatus.Released => "badge-success",
+            ProductionOrderStatus.InProgress => "badge-warn",
+            ProductionOrderStatus.Completed => "badge-success",
+            ProductionOrderStatus.Cancelled => "badge-danger",
+            _ => "badge-info"
+        };
+    }
+
     public void Dispose() => AppState.OnChange -= StateHasChanged;
 }

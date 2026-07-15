@@ -26,6 +26,7 @@ public sealed class PlanningPulseDbContext(DbContextOptions<PlanningPulseDbConte
     public DbSet<Routing> Routings => Set<Routing>();
     public DbSet<Operation> Operations => Set<Operation>();
     public DbSet<ProductionOrder> ProductionOrders => Set<ProductionOrder>();
+    public DbSet<ScheduledOperation> ScheduledOperations => Set<ScheduledOperation>();
     public DbSet<InventoryLevel> InventoryLevels => Set<InventoryLevel>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<LeadTime> LeadTimes => Set<LeadTime>();

@@ -13,5 +13,6 @@ public sealed class Item : Entity, ITenantOwned
     public decimal? MinimumOrderQuantity { get; set; }
     public decimal? MaximumInventoryQuantity { get; set; }
     public decimal? EconomicOrderQuantity { get; set; }
+    public decimal SafetyStockQuantity { get; set; } = 0m;
     public bool IsActive { get; set; } = true;
 }

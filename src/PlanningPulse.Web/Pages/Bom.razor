@@ -1,33 +1,146 @@
 @page "/bom"
 @layout MainLayout
+@using Microsoft.EntityFrameworkCore
+@using PlanningPulse.Domain.Boms
+@using PlanningPulse.Domain.Items
 @inject AppState AppState
+@inject PlanningPulse.Infrastructure.Persistence.PlanningPulseDbContext DbContext
+@inject PlanningPulse.Application.Tenancy.ITenantSetter TenantSetter
 @implements IDisposable
 
 <div class="card fade-up">
     <div class="card-header">
         <div class="card-title">Bill of Materials</div>
-        <span class="badge badge-info">4 active BOMs</span>
+        <span class="badge badge-info">@boms.Count active BOMs</span>
     </div>
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Parent Item</th><th>Revision</th><th>Components</th><th>Effective From</th><th>Status</th></tr>
+                <tr>
+                    <th>Parent Item</th>
+                    <th>Revision</th>
+                    <th>Components Count</th>
+                    <th>Effective From</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
             </thead>
             <tbody>
-                <tr><td>WIDGET-A001</td><td>Rev A</td><td>5</td><td>Jan 1, 2026</td><td><span class="badge badge-success">Active</span></td></tr>
-                <tr><td>FRAME-B200</td><td>Rev B</td><td>8</td><td>Mar 1, 2026</td><td><span class="badge badge-success">Active</span></td></tr>
-                <tr><td>MOTOR-D010</td><td>Rev A</td><td>12</td><td>Jan 1, 2026</td><td><span class="badge badge-success">Active</span></td></tr>
-                <tr><td>ASSEMBLY-E001</td><td>Rev C</td><td>20</td><td>Jun 1, 2026</td><td><span class="badge badge-warn">Draft</span></td></tr>
+                @if (boms.Count == 0)
+                {
+                    <tr>
+                        <td colspan="6" style="text-align:center;color:var(--text3);padding:20px;">No BOMs defined.</td>
+                    </tr>
+                }
+                @foreach (var bom in boms)
+                {
+                    var isExpanded = expandedBomId == bom.Id;
+                    <tr>
+                        <td>
+                            <strong>@bom.ParentItem.ItemNumber</strong> - @bom.ParentItem.Name
+                        </td>
+                        <td>@bom.Revision</td>
+                        <td>@bom.Lines.Count components</td>
+                        <td>@bom.EffectiveFrom.ToString("MMM dd, yyyy")</td>
+                        <td>
+                            <span class="badge @(bom.IsActive ? "badge-success" : "badge-warn")">
+                                @(bom.IsActive ? "Active" : "Draft")
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn btn-outline" style="padding:4px 8px;font-size:11px" @onclick="() => ToggleExpand(bom.Id)">
+                                @(isExpanded ? "Collapse" : "Drill Down")
+                            </button>
+                        </td>
+                    </tr>
+                    @if (isExpanded)
+                    {
+                        <tr class="expand-header-row" style="background:var(--bg3)">
+                            <td colspan="6" style="padding:10px 20px;font-weight:600;font-size:12px;color:var(--text2)">
+                                Hierarchical BOM Structure
+                            </td>
+                        </tr>
+                        @foreach (var line in bom.Lines)
+                        {
+                            <tr class="bom-sub-row" style="background:var(--bg2)">
+                                <td style="padding-left: 24px">
+                                    <span style="color:var(--accent);margin-right:8px">↳</span>
+                                    <strong>@line.ComponentItem.ItemNumber</strong> - @line.ComponentItem.Name
+                                </td>
+                                <td>-</td>
+                                <td>@line.QuantityPer.ToString("G29") @line.ComponentItem.UnitOfMeasure</td>
+                                <td>@line.ScrapFactor.ToString("P0") scrap</td>
+                                <td>
+                                    <span class="badge @(line.ComponentItem.Type == ItemType.Manufactured ? "badge-indigo" : line.ComponentItem.Type == ItemType.Phantom ? "badge-warn" : "badge-success")">
+                                        @line.ComponentItem.Type
+                                    </span>
+                                </td>
+                                <td></td>
+                            </tr>
+                            @RenderBomTree(line.ComponentItemId, 2)
+                        }
+                    }
+                }
             </tbody>
         </table>
     </div>
 </div>
 
 @code {
-    protected override void OnInitialized()
+    private List<PlanningPulse.Domain.Boms.Bom> boms = new();
+    private Guid? expandedBomId;
+
+    protected override async Task OnInitializedAsync()
     {
         AppState.PageTitle = "Bill of Materials";
         AppState.OnChange += StateHasChanged;
+
+        TenantSetter.SetTenant(AppState.TenantId);
+
+        boms = await DbContext.Boms
+            .Include(b => b.ParentItem)
+            .Include(b => b.Lines)
+                .ThenInclude(l => l.ComponentItem)
+            .ToListAsync();
     }
+
+    private void ToggleExpand(Guid bomId)
+    {
+        if (expandedBomId == bomId)
+        {
+            expandedBomId = null;
+        }
+        else
+        {
+            expandedBomId = bomId;
+        }
+    }
+
+    RenderFragment RenderBomTree(Guid parentItemId, int depth) => __builder => {
+        var componentBom = boms.FirstOrDefault(b => b.ParentItemId == parentItemId);
+        if (componentBom != null)
+        {
+            foreach (var line in componentBom.Lines)
+            {
+                <tr class="bom-sub-row" style="background:var(--bg2)">
+                    <td style="padding-left: @(depth * 24)px">
+                        <span style="color:var(--accent);margin-right:8px">↳</span>
+                        <strong>@line.ComponentItem.ItemNumber</strong> - @line.ComponentItem.Name
+                    </td>
+                    <td>@componentBom.Revision</td>
+                    <td>@line.QuantityPer.ToString("G29") @line.ComponentItem.UnitOfMeasure</td>
+                    <td>@line.ScrapFactor.ToString("P0") scrap</td>
+                    <td>
+                        <span class="badge @(line.ComponentItem.Type == ItemType.Manufactured ? "badge-indigo" : line.ComponentItem.Type == ItemType.Phantom ? "badge-warn" : "badge-success")">
+                            @line.ComponentItem.Type
+                        </span>
+                    </td>
+                    <td></td>
+                </tr>
+                @RenderBomTree(line.ComponentItemId, depth + 1)
+            }
+        }
+    };
+
     public void Dispose() => AppState.OnChange -= StateHasChanged;
 }

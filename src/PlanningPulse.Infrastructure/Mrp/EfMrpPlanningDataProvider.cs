@@ -90,7 +90,8 @@ public sealed class EfMrpPlanningDataProvider(PlanningPulseDbContext dbContext) 
                 x.Type,
                 x.MinimumOrderQuantity,
                 x.MaximumInventoryQuantity,
-                x.EconomicOrderQuantity
+                x.EconomicOrderQuantity,
+                x.SafetyStockQuantity
             })
             .ToListAsync(cancellationToken);
 
@@ -102,19 +103,23 @@ public sealed class EfMrpPlanningDataProvider(PlanningPulseDbContext dbContext) 
                 MapItemType(x.Type),
                 x.MinimumOrderQuantity,
                 x.MaximumInventoryQuantity,
-                x.EconomicOrderQuantity))
+                x.EconomicOrderQuantity,
+                x.SafetyStockQuantity))
             .ToDictionary(x => x.ItemId);
 
-        var inventory = await dbContext.InventoryLevels
+        var inventoryLevels = await dbContext.InventoryLevels
             .AsNoTracking()
             .Where(x => allItemIds.Contains(x.ItemId))
+            .ToListAsync(cancellationToken);
+
+        var inventory = inventoryLevels
             .GroupBy(x => x.ItemId)
             .Select(x => new MrpInventorySnapshot(
                 x.Key,
                 x.Sum(i => i.OnHandQuantity),
                 x.Sum(i => i.AllocatedQuantity),
                 x.Sum(i => i.OnOrderQuantity)))
-            .ToDictionaryAsync(x => x.ItemId, cancellationToken);
+            .ToDictionary(x => x.ItemId);
 
         var leadTimeRows = await dbContext.LeadTimes
             .AsNoTracking()

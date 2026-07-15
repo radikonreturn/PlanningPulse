@@ -1,7 +1,24 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace PlanningPulse.Application.Mrp;
 
-public sealed class MrpEngine(IMrpPlanningDataProvider planningDataProvider) : IMrpEngine
+public sealed class MrpEngine : IMrpEngine
 {
+    private readonly IMrpPlanningDataProvider _planningDataProvider;
+    private readonly Dictionary<LotSizingMethod, ILotSizingStrategy> _strategies;
+
+    public MrpEngine(
+        IMrpPlanningDataProvider planningDataProvider,
+        IEnumerable<ILotSizingStrategy> strategies)
+    {
+        _planningDataProvider = planningDataProvider;
+        _strategies = strategies.ToDictionary(s => s.Method);
+    }
+
     public Task<IReadOnlyCollection<MrpRecommendation>> PlanAsync(
         IReadOnlyCollection<GrossRequirement> grossRequirements,
         LotSizingMethod lotSizingMethod,
@@ -22,19 +39,182 @@ public sealed class MrpEngine(IMrpPlanningDataProvider planningDataProvider) : I
 
         ValidateGrossRequirements(grossRequirements);
 
-        var snapshot = await planningDataProvider.GetPlanningSnapshotAsync(
+        var snapshot = await _planningDataProvider.GetPlanningSnapshotAsync(
             grossRequirements.Select(x => x.ItemId).Distinct().ToArray(),
             cancellationToken);
 
-        var explodedRequirements = new List<GrossRequirement>();
+        var recommendations = new List<MrpRecommendation>();
         var exceptions = new List<MrpRecommendation>();
 
-        foreach (var requirement in grossRequirements)
+        // Check for missing items in snapshot first
+        foreach (var req in grossRequirements)
         {
-            ExplodeRequirement(requirement, snapshot, explodedRequirements, exceptions, []);
+            if (!snapshot.Items.ContainsKey(req.ItemId))
+            {
+                exceptions.Add(new MrpRecommendation(
+                    req.ItemId,
+                    req.Quantity,
+                    req.RequiredDate,
+                    req.RequiredDate,
+                    "Exception",
+                    "Item is missing from the planning snapshot."));
+            }
         }
 
-        var recommendations = NetAndRecommend(explodedRequirements, snapshot, lotSizingMethod);
+        // Calculate Low-Level Codes
+        var llc = CalculateLowLevelCodes(snapshot, out var cycledItems);
+        if (llc == null)
+        {
+            // BOM cycle detected. Add exceptions for cycled items
+            foreach (var req in grossRequirements)
+            {
+                if (cycledItems.Contains(req.ItemId))
+                {
+                    exceptions.Add(new MrpRecommendation(
+                        req.ItemId,
+                        req.Quantity,
+                        req.RequiredDate,
+                        req.RequiredDate,
+                        "Exception",
+                        "BOM cycle detected."));
+                }
+            }
+            return exceptions.ToArray();
+        }
+
+        // Group gross requirements by item
+        var grossReqs = new Dictionary<Guid, List<GrossRequirement>>();
+        foreach (var req in grossRequirements)
+        {
+            if (!snapshot.Items.ContainsKey(req.ItemId))
+            {
+                continue;
+            }
+
+            if (!grossReqs.TryGetValue(req.ItemId, out var list))
+            {
+                list = new List<GrossRequirement>();
+                grossReqs[req.ItemId] = list;
+            }
+            list.Add(req);
+        }
+
+        // Sort items by low-level code (highest level/shallowest first, components later)
+        var sortedItemIds = snapshot.Items.Keys
+            .OrderBy(id => llc.TryGetValue(id, out var code) ? code : 999)
+            .ToArray();
+
+        // Track available inventory balance over time.
+        // Key: ItemId. Value: current available balance.
+        var availableInventory = snapshot.InventoryByItem.ToDictionary(
+            x => x.Key,
+            x => x.Value.OnHandQuantity - x.Value.AllocatedQuantity + x.Value.OnOrderQuantity);
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        foreach (var itemId in sortedItemIds)
+        {
+            if (!snapshot.Items.TryGetValue(itemId, out var item))
+            {
+                continue;
+            }
+
+            // Get gross requirements list
+            if (!grossReqs.TryGetValue(itemId, out var reqList))
+            {
+                reqList = new List<GrossRequirement>();
+                grossReqs[itemId] = reqList;
+            }
+
+            // Get safety stock and current inventory position
+            availableInventory.TryGetValue(itemId, out var available);
+            var safetyStock = item.SafetyStockQuantity;
+
+            // If currently below safety stock, and we have no requirements or the first requirement is in the future,
+            // we should inject a requirement of 0 at `today` to trigger safety stock replenishment.
+            if (item.Type != MrpItemType.Phantom && available < safetyStock)
+            {
+                var hasTodayReq = reqList.Any(r => r.RequiredDate <= today);
+                if (!hasTodayReq)
+                {
+                    reqList.Add(new GrossRequirement(itemId, 0m, today));
+                }
+            }
+
+            if (reqList.Count == 0)
+            {
+                continue;
+            }
+
+            // Group requirements by date, sorted chronologically.
+            var chronologicalGroups = reqList
+                .GroupBy(r => r.RequiredDate)
+                .OrderBy(g => g.Key)
+                .ToArray();
+
+            foreach (var group in chronologicalGroups)
+            {
+                var reqDate = group.Key;
+                var grossQuantity = group.Sum(r => r.Quantity);
+
+                if (item.Type == MrpItemType.Phantom)
+                {
+                    // Phantoms do not have inventory or safety stock, they are transient.
+                    // Planned quantity is equal to gross requirements.
+                    var plannedQuantity = grossQuantity;
+                    var releaseDate = reqDate; // Phantoms have no lead time.
+
+                    // Explode immediately to components
+                    ExplodeToComponents(itemId, plannedQuantity, releaseDate, snapshot, grossReqs, exceptions, reqDate);
+                }
+                else
+                {
+                    // Net requirements calculation
+                    var shortage = (grossQuantity + safetyStock) - available;
+                    if (shortage > 0)
+                    {
+                        var netQuantity = shortage;
+
+                        if (!_strategies.TryGetValue(lotSizingMethod, out var strategy))
+                        {
+                            strategy = _strategies[LotSizingMethod.LotForLot];
+                        }
+
+                        var plannedQuantity = strategy.CalculateOrderQuantity(netQuantity, item);
+                        var releaseDate = CalculateReleaseDate(reqDate, item, snapshot);
+                        var recommendationType = item.Type == MrpItemType.Purchased ? "Purchase" : "Production";
+                        var reason = strategy.GetReason(netQuantity, plannedQuantity, item);
+
+                        recommendations.Add(new MrpRecommendation(
+                            item.ItemId,
+                            plannedQuantity,
+                            releaseDate,
+                            reqDate,
+                            recommendationType,
+                            reason
+                        ));
+
+                        // Add planned quantity to available inventory, and subtract gross requirement
+                        available = available + plannedQuantity - grossQuantity;
+
+                        // Explode component gross requirements at release date
+                        if (item.Type == MrpItemType.Manufactured)
+                        {
+                            ExplodeToComponents(itemId, plannedQuantity, releaseDate, snapshot, grossReqs, exceptions, reqDate);
+                        }
+                    }
+                    else
+                    {
+                        // Sufficient inventory. Just consume from available.
+                        available -= grossQuantity;
+                    }
+                }
+            }
+
+            // Save the final available back (though it's not strictly needed since we iterate sorted items)
+            availableInventory[itemId] = available;
+        }
+
         return exceptions.Concat(recommendations)
             .OrderBy(x => x.DueDate)
             .ThenBy(x => x.ReleaseDate)
@@ -51,186 +231,100 @@ public sealed class MrpEngine(IMrpPlanningDataProvider planningDataProvider) : I
                 throw new ArgumentException("Gross requirement item id cannot be empty.", nameof(grossRequirements));
             }
 
-            if (requirement.Quantity <= 0)
+            if (requirement.Quantity < 0)
             {
-                throw new ArgumentException("Gross requirement quantity must be greater than zero.", nameof(grossRequirements));
+                throw new ArgumentException("Gross requirement quantity must be non-negative.", nameof(grossRequirements));
             }
         }
     }
 
-    private static void ExplodeRequirement(
-        GrossRequirement requirement,
-        MrpPlanningSnapshot snapshot,
-        List<GrossRequirement> explodedRequirements,
-        List<MrpRecommendation> exceptions,
-        HashSet<Guid> path)
+    private static Dictionary<Guid, int>? CalculateLowLevelCodes(MrpPlanningSnapshot snapshot, out HashSet<Guid> cycledItems)
     {
-        explodedRequirements.Add(requirement);
+        cycledItems = new HashSet<Guid>();
+        var llc = snapshot.Items.Keys.ToDictionary(id => id, id => 0);
+        bool changed = true;
+        int maxIterations = snapshot.Items.Count;
+        int iteration = 0;
 
-        if (!snapshot.Items.TryGetValue(requirement.ItemId, out var item))
+        while (changed && iteration < maxIterations + 1)
         {
-            exceptions.Add(new MrpRecommendation(
-                requirement.ItemId,
-                requirement.Quantity,
-                requirement.RequiredDate,
-                requirement.RequiredDate,
-                "Exception",
-                "Item is missing from the planning snapshot."));
-            return;
+            changed = false;
+            iteration++;
+
+            foreach (var parentId in snapshot.Items.Keys)
+            {
+                if (snapshot.BomLinesByParentItem.TryGetValue(parentId, out var lines))
+                {
+                    var parentLlc = llc[parentId];
+                    foreach (var line in lines)
+                    {
+                        if (llc.TryGetValue(line.ComponentItemId, out var compLlc))
+                        {
+                            if (compLlc <= parentLlc)
+                            {
+                                llc[line.ComponentItemId] = parentLlc + 1;
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        if (!path.Add(requirement.ItemId))
+        if (changed)
         {
-            exceptions.Add(new MrpRecommendation(
-                requirement.ItemId,
-                requirement.Quantity,
-                requirement.RequiredDate,
-                requirement.RequiredDate,
-                "Exception",
-                "BOM cycle detected."));
-            return;
+            // Cycle detected
+            foreach (var id in snapshot.Items.Keys)
+            {
+                cycledItems.Add(id);
+            }
+            return null;
         }
 
-        if (item.Type == MrpItemType.Purchased)
-        {
-            path.Remove(requirement.ItemId);
-            return;
-        }
+        return llc;
+    }
 
-        if (!snapshot.BomLinesByParentItem.TryGetValue(requirement.ItemId, out var lines) || lines.Count == 0)
+    private static void ExplodeToComponents(
+        Guid parentId,
+        decimal parentPlannedQty,
+        DateOnly parentReleaseDate,
+        MrpPlanningSnapshot snapshot,
+        Dictionary<Guid, List<GrossRequirement>> grossReqs,
+        List<MrpRecommendation> exceptions,
+        DateOnly originalDueDate)
+    {
+        if (!snapshot.BomLinesByParentItem.TryGetValue(parentId, out var lines) || lines.Count == 0)
         {
-            if (item.Type == MrpItemType.Manufactured)
+            if (snapshot.Items.TryGetValue(parentId, out var parentItem) && parentItem.Type == MrpItemType.Manufactured)
             {
                 exceptions.Add(new MrpRecommendation(
-                    requirement.ItemId,
-                    requirement.Quantity,
-                    CalculateReleaseDate(requirement.RequiredDate, item, snapshot),
-                    requirement.RequiredDate,
+                    parentId,
+                    parentPlannedQty,
+                    parentReleaseDate,
+                    originalDueDate,
                     "Exception",
                     "Manufactured item has no active BOM."));
             }
-
-            path.Remove(requirement.ItemId);
             return;
         }
 
-        var parentReleaseDate = CalculateReleaseDate(requirement.RequiredDate, item, snapshot);
         foreach (var line in lines)
         {
             var scrapMultiplier = 1m + line.ScrapFactor;
-            var componentQuantity = requirement.Quantity * line.QuantityPer * scrapMultiplier;
+            var componentQuantity = parentPlannedQty * line.QuantityPer * scrapMultiplier;
             if (componentQuantity <= 0)
             {
                 continue;
             }
 
-            ExplodeRequirement(
-                new GrossRequirement(line.ComponentItemId, componentQuantity, parentReleaseDate),
-                snapshot,
-                explodedRequirements,
-                exceptions,
-                path);
-        }
-
-        path.Remove(requirement.ItemId);
-    }
-
-    private static IReadOnlyCollection<MrpRecommendation> NetAndRecommend(
-        IReadOnlyCollection<GrossRequirement> explodedRequirements,
-        MrpPlanningSnapshot snapshot,
-        LotSizingMethod lotSizingMethod)
-    {
-        var recommendations = new List<MrpRecommendation>();
-        var availableByItem = snapshot.InventoryByItem.ToDictionary(
-            x => x.Key,
-            x => x.Value.OnHandQuantity - x.Value.AllocatedQuantity + x.Value.OnOrderQuantity);
-
-        foreach (var itemGroup in explodedRequirements
-                     .GroupBy(x => x.ItemId)
-                     .OrderBy(x => x.Key))
-        {
-            availableByItem.TryGetValue(itemGroup.Key, out var available);
-
-            foreach (var bucket in itemGroup
-                         .GroupBy(x => x.RequiredDate)
-                         .OrderBy(x => x.Key))
+            if (!grossReqs.TryGetValue(line.ComponentItemId, out var list))
             {
-                var grossQuantity = bucket.Sum(x => x.Quantity);
-                var netQuantity = Math.Max(0m, grossQuantity - available);
-                available = Math.Max(0m, available - grossQuantity);
-
-                if (netQuantity <= 0)
-                {
-                    continue;
-                }
-
-                if (!snapshot.Items.TryGetValue(itemGroup.Key, out var item))
-                {
-                    recommendations.Add(new MrpRecommendation(
-                        itemGroup.Key,
-                        netQuantity,
-                        bucket.Key,
-                        bucket.Key,
-                        "Exception",
-                        "Cannot create supply recommendation because item is missing."));
-                    continue;
-                }
-
-                var plannedQuantity = ApplyLotSizing(netQuantity, item, lotSizingMethod);
-                available += Math.Max(0m, plannedQuantity - netQuantity);
-                var releaseDate = CalculateReleaseDate(bucket.Key, item, snapshot);
-                var recommendationType = item.Type == MrpItemType.Purchased ? "Purchase" : "Production";
-
-                recommendations.Add(new MrpRecommendation(
-                    item.ItemId,
-                    plannedQuantity,
-                    releaseDate,
-                    bucket.Key,
-                    recommendationType,
-                    BuildRecommendationReason(lotSizingMethod, netQuantity, plannedQuantity, item)));
+                list = new List<GrossRequirement>();
+                grossReqs[line.ComponentItemId] = list;
             }
+
+            list.Add(new GrossRequirement(line.ComponentItemId, componentQuantity, parentReleaseDate));
         }
-
-        return recommendations;
-    }
-
-    private static decimal ApplyLotSizing(decimal netQuantity, MrpItemSnapshot item, LotSizingMethod lotSizingMethod)
-    {
-        return lotSizingMethod switch
-        {
-            LotSizingMethod.LotForLot => netQuantity,
-            LotSizingMethod.MinMax => ApplyMinMax(netQuantity, item),
-            LotSizingMethod.EconomicOrderQuantity => ApplyEconomicOrderQuantity(netQuantity, item),
-            _ => netQuantity
-        };
-    }
-
-    private static decimal ApplyMinMax(decimal netQuantity, MrpItemSnapshot item)
-    {
-        var plannedQuantity = netQuantity;
-
-        if (item.MaximumInventoryQuantity.HasValue && item.MaximumInventoryQuantity.Value > plannedQuantity)
-        {
-            plannedQuantity = item.MaximumInventoryQuantity.Value;
-        }
-
-        if (item.MinimumOrderQuantity.HasValue && plannedQuantity < item.MinimumOrderQuantity.Value)
-        {
-            plannedQuantity = item.MinimumOrderQuantity.Value;
-        }
-
-        return plannedQuantity;
-    }
-
-    private static decimal ApplyEconomicOrderQuantity(decimal netQuantity, MrpItemSnapshot item)
-    {
-        if (!item.EconomicOrderQuantity.HasValue || item.EconomicOrderQuantity.Value <= 0)
-        {
-            return netQuantity;
-        }
-
-        var eoq = item.EconomicOrderQuantity.Value;
-        return Math.Ceiling(netQuantity / eoq) * eoq;
     }
 
     private static DateOnly CalculateReleaseDate(DateOnly dueDate, MrpItemSnapshot item, MrpPlanningSnapshot snapshot)
@@ -248,21 +342,5 @@ public sealed class MrpEngine(IMrpPlanningDataProvider planningDataProvider) : I
         };
 
         return dueDate.AddDays(-(planningLeadTime + leadTime.SafetyLeadTimeDays));
-    }
-
-    private static string BuildRecommendationReason(
-        LotSizingMethod method,
-        decimal netQuantity,
-        decimal plannedQuantity,
-        MrpItemSnapshot item)
-    {
-        var leadTimeReason = $"Net requirement for {item.ItemNumber}.";
-        return method switch
-        {
-            LotSizingMethod.LotForLot => $"{leadTimeReason} Lot-for-lot quantity equals net requirement.",
-            LotSizingMethod.MinMax when plannedQuantity != netQuantity => $"{leadTimeReason} Quantity adjusted by min/max planning policy.",
-            LotSizingMethod.EconomicOrderQuantity when plannedQuantity != netQuantity => $"{leadTimeReason} Quantity rounded to EOQ multiple.",
-            _ => leadTimeReason
-        };
     }
 }

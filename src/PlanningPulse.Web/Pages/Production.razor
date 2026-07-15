@@ -1,34 +1,102 @@
 @page "/production"
 @layout MainLayout
+@using Microsoft.EntityFrameworkCore
+@using PlanningPulse.Domain.Production
 @inject AppState AppState
+@inject PlanningPulse.Infrastructure.Persistence.PlanningPulseDbContext DbContext
+@inject PlanningPulse.Application.Tenancy.ITenantSetter TenantSetter
 @implements IDisposable
 
 <div class="card fade-up">
     <div class="card-header">
         <div class="card-title">Production Orders</div>
-        <span class="badge badge-info">47 open</span>
+        <span class="badge badge-info">@productionOrders.Count orders total</span>
     </div>
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Order #</th><th>Item</th><th>Qty</th><th>Due Date</th><th>Scheduled Start</th><th>Status</th></tr>
+                <tr>
+                    <th>Order Number</th>
+                    <th>Item</th>
+                    <th>Quantity</th>
+                    <th>Due Date</th>
+                    <th>Scheduled Start</th>
+                    <th>Scheduled End</th>
+                    <th>Status</th>
+                </tr>
             </thead>
             <tbody>
-                <tr><td>PO-0047</td><td>WIDGET-A001</td><td>200</td><td>Jul 22</td><td>Jul 15</td><td><span class="badge badge-info">Scheduled</span></td></tr>
-                <tr><td>PO-0046</td><td>FRAME-B200</td><td>50</td><td>Jul 20</td><td>Jul 14</td><td><span class="badge badge-success">In Progress</span></td></tr>
-                <tr><td>PO-0045</td><td>MOTOR-D010</td><td>15</td><td>Jul 28</td><td>Jul 18</td><td><span class="badge badge-warn">Pending</span></td></tr>
-                <tr><td>PO-0044</td><td>BOLT-C050</td><td>1,000</td><td>Jul 25</td><td>Jul 20</td><td><span class="badge badge-warn">Pending</span></td></tr>
-                <tr><td>PO-0043</td><td>ASSEMBLY-E001</td><td>10</td><td>Aug 1</td><td>Jul 22</td><td><span class="badge badge-danger">Delayed</span></td></tr>
+                @if (productionOrders.Count == 0)
+                {
+                    <tr>
+                        <td colspan="7" style="text-align:center;color:var(--text3);padding:20px;">No production orders found.</td>
+                    </tr>
+                }
+                @foreach (var po in productionOrders)
+                {
+                    <tr>
+                        <td><strong>@po.OrderNumber</strong></td>
+                        <td><strong>@po.Item.ItemNumber</strong> - @po.Item.Name</td>
+                        <td>@po.Quantity.ToString("G29") @po.Item.UnitOfMeasure</td>
+                        <td>@po.DueDate.ToString("MMM dd, yyyy")</td>
+                        <td>
+                            @if (po.ScheduledStartDate.HasValue)
+                            {
+                                <strong>@po.ScheduledStartDate.Value.ToString("MMM dd, yyyy")</strong>
+                            }
+                            else
+                            {
+                                <span style="color:var(--text3); font-style:italic;">Not Scheduled</span>
+                            }
+                        </td>
+                        <td>
+                            @if (po.ScheduledEndDate.HasValue)
+                            {
+                                <strong>@po.ScheduledEndDate.Value.ToString("MMM dd, yyyy")</strong>
+                            }
+                            else
+                            {
+                                <span style="color:var(--text3); font-style:italic;">Not Scheduled</span>
+                            }
+                        </td>
+                        <td>
+                            <span class="badge @GetStatusBadgeClass(po.Status)">
+                                @po.Status
+                            </span>
+                        </td>
+                    </tr>
+                }
             </tbody>
         </table>
     </div>
 </div>
 
 @code {
-    protected override void OnInitialized()
+    private List<ProductionOrder> productionOrders = new();
+
+    protected override async Task OnInitializedAsync()
     {
         AppState.PageTitle = "Production Orders";
         AppState.OnChange += StateHasChanged;
+
+        TenantSetter.SetTenant(AppState.TenantId);
+        productionOrders = await DbContext.ProductionOrders
+            .Include(x => x.Item)
+            .ToListAsync();
     }
+
+    private string GetStatusBadgeClass(ProductionOrderStatus status)
+    {
+        return status switch
+        {
+            ProductionOrderStatus.Planned => "badge-info",
+            ProductionOrderStatus.Released => "badge-success",
+            ProductionOrderStatus.InProgress => "badge-warn",
+            ProductionOrderStatus.Completed => "badge-success",
+            ProductionOrderStatus.Cancelled => "badge-danger",
+            _ => "badge-info"
+        };
+    }
+
     public void Dispose() => AppState.OnChange -= StateHasChanged;
 }
