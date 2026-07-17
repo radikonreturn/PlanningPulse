@@ -31,7 +31,7 @@ public sealed class MrpIntegrationTests
     public async Task TestRunMrpAgainstSeededDb()
     {
         // Path to the sqlite db file in the Web project
-        var dbPath = Path.Combine("..", "..", "..", "..", "src", "PlanningPulse.Web", "planningpulse.db");
+        var dbPath = @"c:\Users\abdul\OneDrive\Belgeler\gitler\PlanningPulse\src\PlanningPulse.Web\planningpulse.db";
         _output.WriteLine($"Database path: {Path.GetFullPath(dbPath)}");
 
         if (!File.Exists(dbPath))
