@@ -19,6 +19,13 @@
             </p>
         </div>
         <div style="display:flex; gap:12px; align-items:center;">
+            @if (!string.IsNullOrEmpty(statusMessage))
+            {
+                <span class="fade-in" style="font-size:11px; color:var(--success); font-weight:600; display:inline-flex; align-items:center; gap:4px; padding:6px 12px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.15); border-radius:6px;">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                    @statusMessage
+                </span>
+            }
             <div style="display:flex; align-items:center; gap:8px;">
                 <label style="font-size:12px; color:var(--text2); font-weight:600;">Lot Sizing:</label>
                 <select class="form-input" style="padding:6px 12px; font-size:12px; width:180px; margin:0;" @bind="selectedMethod">
@@ -134,6 +141,7 @@
     private Dictionary<Guid, Item> itemsById = new();
     private LotSizingMethod selectedMethod = LotSizingMethod.LotForLot;
     private bool isCalculating = false;
+    private string? statusMessage = null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -149,7 +157,11 @@
     private async Task CalculateMrp()
     {
         isCalculating = true;
+        statusMessage = null;
         StateHasChanged();
+
+        // Introduce a small 500ms delay to make the transition visible and feel responsive
+        await Task.Delay(500);
 
         try
         {
@@ -172,6 +184,7 @@
             recommendations = result.ToList();
 
             AppState.PendingMrpCount = recommendations.Count(x => x.RecommendationType != "Exception");
+            statusMessage = $"Success: Generated {recommendations.Count} recommendations.";
         }
         catch (Exception ex)
         {

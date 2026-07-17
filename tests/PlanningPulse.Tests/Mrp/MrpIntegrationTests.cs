@@ -82,10 +82,22 @@ public sealed class MrpIntegrationTests
         var result = await engine.PlanAsync(grossReqs, LotSizingMethod.LotForLot, CancellationToken.None);
         _output.WriteLine($"Total recommendations generated: {result.Count}");
 
-        foreach (var rec in result)
+        using (var writer = new StreamWriter("mrp_test_output.txt"))
         {
-            var item = items.FirstOrDefault(i => i.Id == rec.ItemId);
-            _output.WriteLine($"Recommendation: {rec.RecommendationType} | Qty: {rec.Quantity} | Item: {item?.ItemNumber} | Release: {rec.ReleaseDate} | Due: {rec.DueDate} | Reason: {rec.Reason}");
+            writer.WriteLine($"Database path: {Path.GetFullPath(dbPath)}");
+            writer.WriteLine($"Active Tenant: {tenant.Name} ({tenant.Id})");
+            writer.WriteLine($"Total items: {items.Count}");
+            writer.WriteLine($"Total open orders: {openOrders.Count}");
+            writer.WriteLine($"Total recommendations generated: {result.Count}");
+            writer.WriteLine("---------------------------------------------");
+
+            foreach (var rec in result)
+            {
+                var item = items.FirstOrDefault(i => i.Id == rec.ItemId);
+                var line = $"Recommendation: {rec.RecommendationType} | Qty: {rec.Quantity} | Item: {item?.ItemNumber} ({item?.Name}) | Release: {rec.ReleaseDate} | Due: {rec.DueDate} | Reason: {rec.Reason}";
+                _output.WriteLine(line);
+                writer.WriteLine(line);
+            }
         }
 
         Assert.NotEmpty(result);

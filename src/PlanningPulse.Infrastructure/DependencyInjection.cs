@@ -24,11 +24,29 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddPlanningPulseInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        services.Configure<JwtOptions>(options =>
+        {
+            configuration.GetSection(JwtOptions.SectionName).Bind(options);
+            if (string.IsNullOrWhiteSpace(options.SigningKey))
+            {
+                options.SigningKey = Environment.GetEnvironmentVariable("JWT_SIGNING_KEY")
+                    ?? Environment.GetEnvironmentVariable("Jwt__SigningKey")
+                    ?? string.Empty;
+            }
+        });
 
         var provider = configuration.GetValue<string>("Database:Provider") ?? "Sqlite";
-        var connectionString = configuration.GetConnectionString("PlanningPulse")
-            ?? throw new InvalidOperationException("Connection string 'PlanningPulse' is not configured.");
+        var connectionString = configuration.GetConnectionString("PlanningPulse");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING_PLANNING_PULSE")
+                ?? Environment.GetEnvironmentVariable("ConnectionStrings__PlanningPulse");
+        }
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException("Connection string 'PlanningPulse' is not configured. Please set the environment variable 'ConnectionStrings__PlanningPulse' or 'CONNECTION_STRING_PLANNING_PULSE'.");
+        }
 
         services.AddDbContext<PlanningPulseDbContext>(options =>
         {
@@ -57,10 +75,18 @@ public static class DependencyInjection
         services.AddScoped<ISchedulingService, SchedulingService>();
         services.AddScoped<IImportService, ImportService>();
 
-        var jwtOptions = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+        var jwtOptions = new JwtOptions();
+        configuration.GetSection(JwtOptions.SectionName).Bind(jwtOptions);
         if (string.IsNullOrWhiteSpace(jwtOptions.SigningKey))
         {
-            throw new InvalidOperationException("JWT signing key is not configured.");
+            jwtOptions.SigningKey = Environment.GetEnvironmentVariable("JWT_SIGNING_KEY")
+                ?? Environment.GetEnvironmentVariable("Jwt__SigningKey")
+                ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(jwtOptions.SigningKey))
+        {
+            throw new InvalidOperationException("JWT signing key is not configured. Please set the environment variable 'JWT_SIGNING_KEY' or 'Jwt__SigningKey' with a secret of at least 32 characters.");
         }
 
         services

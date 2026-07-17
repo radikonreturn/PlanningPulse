@@ -10,13 +10,7 @@
 @inject IMrpEngine MrpEngine
 @implements IDisposable
 
-@if (!AppState.IsAuthenticated)
-{
-    <Login />
-}
-else
-{
-    @if (isLoading)
+@if (isLoading)
     {
         <div style="text-align:center;color:var(--text3);padding:100px;">
             <p>Loading Dashboard metrics...</p>
